@@ -4,7 +4,9 @@ import {
   addEnvironmentFromPairingCode,
   listEnvironments,
   removeEnvironment,
-  resolveEnvironment
+  renameEnvironment,
+  resolveEnvironment,
+  updateEnvironmentFromPairingCode
 } from '../../shared/runtime-environment-store'
 import {
   redactRuntimeEnvironment,
@@ -30,6 +32,8 @@ import {
 const RUNTIME_ENVIRONMENT_HANDLER_CHANNELS = [
   'runtimeEnvironments:list',
   'runtimeEnvironments:addFromPairingCode',
+  'runtimeEnvironments:rename',
+  'runtimeEnvironments:updateFromPairingCode',
   'runtimeEnvironments:resolve',
   'runtimeEnvironments:remove',
   'runtimeEnvironments:disconnect',
@@ -89,8 +93,42 @@ export function registerRuntimeEnvironmentHandlers(store: Store): void {
       environment: redactRuntimeEnvironment(addEnvironmentFromPairingCode(getUserDataPath(), args))
     })
   )
-  ipcMain.handle('runtimeEnvironments:resolve', (_event, args: { selector: string }) =>
-    redactRuntimeEnvironment(resolveEnvironment(getUserDataPath(), args.selector))
+  ipcMain.handle(
+    'runtimeEnvironments:rename',
+    (
+      _event,
+      args: { selector: string; name: string }
+    ): { environment: PublicKnownRuntimeEnvironment } => ({
+      environment: redactRuntimeEnvironment(
+        renameEnvironment(getUserDataPath(), args.selector, { name: args.name })
+      )
+    })
+  )
+  ipcMain.handle(
+    'runtimeEnvironments:updateFromPairingCode',
+    (
+      _event,
+      args: { selector: string; pairingCode: string }
+    ): { environment: PublicKnownRuntimeEnvironment } => {
+      const environment = updateEnvironmentFromPairingCode(getUserDataPath(), args.selector, {
+        pairingCode: args.pairingCode
+      })
+      // Why: re-pair replaces the endpoint/token; drop live sockets so the next
+      // connect/status probe uses the newly saved offer instead of a stale path.
+      closeRemoteRuntimeRequestConnection(environment.id)
+      clearSharedControlSupport(environment.id)
+      if (args.selector !== environment.id) {
+        closeRemoteRuntimeRequestConnection(args.selector)
+        clearSharedControlSupport(args.selector)
+      }
+      closeSubscriptionsForEnvironment(environment.id)
+      return { environment: redactRuntimeEnvironment(environment) }
+    }
+  )
+  ipcMain.handle(
+    'runtimeEnvironments:resolve',
+    (_event, args: { selector: string }): PublicKnownRuntimeEnvironment =>
+      redactRuntimeEnvironment(resolveEnvironment(getUserDataPath(), args.selector))
   )
   ipcMain.handle(
     'runtimeEnvironments:remove',
