@@ -13,6 +13,7 @@ import { buildFontFamily } from './layout-serialization'
 import { captureScrollState, restoreScrollState, safeFit } from '@/lib/pane-manager/pane-tree-ops'
 import {
   normalizeTerminalFastScrollSensitivity,
+  normalizeTerminalMinimumContrastRatio,
   normalizeTerminalScrollSensitivity,
   resolveTerminalCursorInactiveStyle
 } from '@/lib/pane-manager/pane-terminal-options'
@@ -245,6 +246,9 @@ export function applyTerminalAppearance(
     )
     pane.terminal.options.fastScrollSensitivity = normalizeTerminalFastScrollSensitivity(
       settings.terminalFastScrollSensitivity
+    )
+    pane.terminal.options.minimumContrastRatio = normalizeTerminalMinimumContrastRatio(
+      settings.terminalMinimumContrastRatio
     )
     // Why: xterm's macOptionIsMeta only flips on the 'true' mode. 'left' and
     // 'right' are handled in the keydown policy (terminal-shortcut-policy),
