@@ -99,9 +99,30 @@ export function buildAgentStartupPlan(args: {
 
   if (config.promptInjectionMode === 'argv') {
     const promptSeparator = config.argvPromptSeparator ? ` ${config.argvPromptSeparator}` : ''
+    const launchCommand = `${baseCommand.command}${promptSeparator} ${quotedPrompt}`
+    if (
+      !inlineAgentDraftFitsPlatform({
+        command: launchCommand,
+        env: args.agentEnv ?? undefined,
+        platform,
+        shell
+      })
+    ) {
+      // Why: oversized Windows argv must fall back to post-ready stdin rather
+      // than being truncated or rejected by CreateProcess/cmd.exe.
+      return {
+        agent,
+        launchCommand: baseCommand.command,
+        expectedProcess: config.expectedProcess,
+        followupPrompt: trimmedPrompt,
+        launchConfig,
+        ...appliedSessionOptionProps(baseCommand.appliedSessionOptions),
+        ...(args.agentEnv ? { env: { ...args.agentEnv } } : {})
+      }
+    }
     return {
       agent,
-      launchCommand: `${baseCommand.command}${promptSeparator} ${quotedPrompt}`,
+      launchCommand,
       expectedProcess: config.expectedProcess,
       followupPrompt: null,
       launchConfig,
