@@ -36,6 +36,12 @@ import {
   createAuthFilesystemOperation,
   type SharedAuthFilesystemOperation
 } from './auth-filesystem-operation'
+import {
+  buildCodexRateLimitResetCreditsConsumeUrl,
+  buildCodexRateLimitResetCreditsUrl,
+  resolveCodexBackendBaseUrl
+} from './codex-backend-base-url'
+import { mapCodexRpcRateLimitsPayload } from './codex-rpc-rate-limit-mapping'
 
 const RPC_TIMEOUT_MS = 10_000
 const WSL_RPC_TIMEOUT_MS = 25_000
@@ -373,7 +379,9 @@ async function fetchBackendRateLimitResetCredits(
     return null
   }
   // Why: Codex 0.140's app-server strips the reset-credit metadata this backend endpoint still returns.
-  const response = await fetch('https://chatgpt.com/backend-api/wham/rate-limit-reset-credits', {
+  // Why: custom chatgpt_base_url backends need the matching WHAM path; resolve from CODEX_HOME config.
+  const baseUrl = await resolveCodexBackendBaseUrl(getCodexHomePath(options?.codexHomePath), signal)
+  const response = await fetch(buildCodexRateLimitResetCreditsUrl(baseUrl), {
     ...auth,
     signal
   })
@@ -433,18 +441,16 @@ export async function consumeCodexRateLimitResetCredit(options: {
   if (!auth) {
     throw new Error('Codex not signed in')
   }
-  const response = await fetch(
-    'https://chatgpt.com/backend-api/wham/rate-limit-reset-credits/consume',
-    {
-      method: 'POST',
-      headers: {
-        ...auth.headers,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ redeem_request_id: options.idempotencyKey }),
-      signal
-    }
-  )
+  const baseUrl = await resolveCodexBackendBaseUrl(getCodexHomePath(options.codexHomePath), signal)
+  const response = await fetch(buildCodexRateLimitResetCreditsConsumeUrl(baseUrl), {
+    method: 'POST',
+    headers: {
+      ...auth.headers,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ redeem_request_id: options.idempotencyKey }),
+    signal
+  })
   if (!response.ok) {
     await cancelUnreadResponseBody(response)
     throw new Error(`Codex reset failed: HTTP ${response.status}`)
@@ -710,6 +716,8 @@ async function fetchViaRpc(options?: FetchCodexRateLimitsOptions): Promise<Provi
             const classifiedWindows = classifyCodexRateLimitWindows(result)
             const session = mapRpcWindow(classifiedWindows.session, CODEX_SESSION_WINDOW_MINUTES)
             const weekly = mapRpcWindow(classifiedWindows.weekly, CODEX_WEEKLY_WINDOW_MINUTES)
+            // Why: preferred session/weekly stay classification-driven; buckets surface extra meters from rateLimitsByLimitId.
+            const { buckets } = mapCodexRpcRateLimitsPayload(wrapper, mapRpcWindow)
             const rateLimitResetCredits = mapRpcRateLimitResetCredits(
               wrapper?.rateLimitResetCredits
             )
@@ -719,6 +727,7 @@ async function fetchViaRpc(options?: FetchCodexRateLimitsOptions): Promise<Provi
                 provider: 'codex',
                 session,
                 weekly,
+                ...(buckets ? { buckets } : {}),
                 ...(rateLimitResetCredits !== undefined ? { rateLimitResetCredits } : {}),
                 updatedAt: Date.now(),
                 error: null,

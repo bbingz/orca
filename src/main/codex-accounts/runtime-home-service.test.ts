@@ -608,7 +608,9 @@ describe('CodexRuntimeHomeService', () => {
       const runtimeConfigPath = join(wslRuntimeHomePath, 'config.toml')
       writeFileSync(wslSystemConfigPath, 'model = "outside-edit"\n', 'utf-8')
       service.prepareForCodexLaunch({ runtime: 'wsl', wslDistro: 'Ubuntu' })
-      expect(readFileSync(runtimeConfigPath, 'utf-8')).toBe('model = "outside-edit"\n')
+      expect(readFileSync(runtimeConfigPath, 'utf-8')).toBe(
+        'cli_auth_credentials_store = "file"\nmodel = "outside-edit"\n'
+      )
       expect(readFileSync(baselinePath, 'utf-8')).toContain('"model": "\\"outside-edit\\""')
 
       // Codex now persists a /model change inside Orca's reconciled runtime.
@@ -2109,7 +2111,7 @@ describe('CodexRuntimeHomeService', () => {
     service.prepareForCodexLaunch()
 
     expect(readFileSync(join(getRuntimeCodexHomePath(), 'config.toml'), 'utf-8')).toBe(
-      'model = "second"\n'
+      'cli_auth_credentials_store = "file"\nmodel = "second"\n'
     )
   })
 
