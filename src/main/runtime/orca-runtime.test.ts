@@ -37678,7 +37678,11 @@ describe('OrcaRuntimeService', () => {
     )
     expect(metaById[result.worktree.id]).toMatchObject({ createdWithAgent: 'codex' })
 
-    runtime.onPtyData('pty-startup-draft', '\x1b[?2004h›', Date.now())
+    runtime.onPtyData(
+      'pty-startup-draft',
+      '\x1b[?2004h\x1b[1m›\x1b[0m Ask Codex to do anything',
+      Date.now()
+    )
     await vi.waitFor(() => {
       expect(write).toHaveBeenCalledWith('pty-startup-draft', `\x1b[200~${draftUrl}\x1b[201~`)
     })
@@ -38281,7 +38285,11 @@ describe('OrcaRuntimeService', () => {
     )
     expect(metaById[result.worktree.id]).toMatchObject({ createdWithAgent: 'codex' })
 
-    runtime.onPtyData('pty-explicit-draft', '\x1b[?2004h›', Date.now())
+    runtime.onPtyData(
+      'pty-explicit-draft',
+      '\x1b[?2004h\x1b[1m›\x1b[0m Ask Codex to do anything',
+      Date.now()
+    )
     await vi.waitFor(() => {
       expect(write).toHaveBeenCalledWith('pty-explicit-draft', `\x1b[200~${draftUrl}\x1b[201~`)
     })
