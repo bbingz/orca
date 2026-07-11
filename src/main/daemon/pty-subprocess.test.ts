@@ -1930,7 +1930,7 @@ describe('createPtySubprocess', () => {
     expect(lastCall[2].env.ORCA_SHELL_READY_MARKER).toBe('1')
   })
 
-  it('uses shell-ready wrapper for Codex native prefill flags', () => {
+  it('uses shell-ready wrapper for Codex positional prompts when the plan opts in', () => {
     const proc = mockPtyProcess()
     spawnMock.mockReturnValue(proc)
     const platform = Object.getOwnPropertyDescriptor(process, 'platform')
@@ -1942,7 +1942,8 @@ describe('createPtySubprocess', () => {
         cols: 80,
         rows: 24,
         cwd: '/repo',
-        command: "codex --prefill 'linked issue context'",
+        command: "codex 'linked issue context'",
+        startupCommandDelivery: 'shell-ready',
         env: { SHELL: '/bin/zsh' }
       })
     } finally {
