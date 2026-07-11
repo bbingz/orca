@@ -102,6 +102,9 @@ export type HookListenerState = {
   warnedEnvs: Set<string>
   lastPromptByPaneKey: Map<string, string>
   lastToolByPaneKey: Map<string, ToolSnapshot>
+  /** Provider session identity can arrive on a metadata-only SessionStart before
+   *  the first visible status event. Keep it pane-scoped until that event. */
+  lastProviderSessionByPaneKey: Map<string, AgentProviderSessionMetadata>
   lastStatusByPaneKey: Map<string, AgentHookEventPayload>
   antigravityCompletedTranscriptByPaneKey: Map<string, string>
   ampCompletedCacheKeys: Set<string>
@@ -135,6 +138,7 @@ export function createHookListenerState(): HookListenerState {
     warnedEnvs: new Set(),
     lastPromptByPaneKey: new Map(),
     lastToolByPaneKey: new Map(),
+    lastProviderSessionByPaneKey: new Map(),
     lastStatusByPaneKey: new Map(),
     antigravityCompletedTranscriptByPaneKey: new Map(),
     ampCompletedCacheKeys: new Set(),
@@ -148,6 +152,7 @@ export function createHookListenerState(): HookListenerState {
 export function clearPaneCacheState(state: HookListenerState, paneKey: string): void {
   deletePaneScopedCacheEntry(state.lastPromptByPaneKey, paneKey)
   deletePaneScopedCacheEntry(state.lastToolByPaneKey, paneKey)
+  deletePaneScopedCacheEntry(state.lastProviderSessionByPaneKey, paneKey)
   deletePaneScopedCacheEntry(state.lastStatusByPaneKey, paneKey)
   deletePaneScopedCacheEntry(state.antigravityCompletedTranscriptByPaneKey, paneKey)
   deletePaneScopedSetEntry(state.ampCompletedCacheKeys, paneKey)
@@ -3139,7 +3144,6 @@ function codexLeadStateForHookEvent(
     return 'waiting'
   }
   if (
-    eventName === 'SessionStart' ||
     eventName === 'UserPromptSubmit' ||
     eventName === 'PreToolUse' ||
     eventName === 'PostToolUse'
@@ -3277,6 +3281,36 @@ function normalizeCodexSubagentLifecycleEvent(
   return buildCodexChildDrivenStatusPayload(state, eventName, paneKey, hookPayload)
 }
 
+
+function resolveHookProviderSession(
+  state: HookListenerState,
+  source: AgentHookSource,
+  paneKey: string,
+  hookPayload: Record<string, unknown>
+): AgentProviderSessionMetadata | undefined {
+  const extracted = extractAgentProviderSession(source, hookPayload) ?? undefined
+  if (source !== 'codex') {
+    return extracted
+  }
+  if (extracted) {
+    state.lastProviderSessionByPaneKey.set(paneKey, extracted)
+    return extracted
+  }
+  return state.lastProviderSessionByPaneKey.get(paneKey)
+}
+
+function codexPayloadIsInterrupted(hookPayload: Record<string, unknown>): boolean {
+  if (hookPayload['is_interrupt'] === true || hookPayload['interrupted'] === true) {
+    return true
+  }
+  const stopReason = readFirstString(hookPayload, ['stop_reason', 'stopReason'])?.toLowerCase()
+  return (
+    stopReason?.includes('interrupt') === true ||
+    stopReason?.includes('abort') === true ||
+    stopReason?.includes('cancel') === true
+  )
+}
+
 function normalizeCodexEvent(
   state: HookListenerState,
   eventName: unknown,
@@ -3288,12 +3322,32 @@ function normalizeCodexEvent(
     return normalizeCodexSubagentLifecycleEvent(state, eventName, paneKey, hookPayload)
   }
 
-  // Why: Codex's request_user_input (0.145+) is auto-allowed, so it fires PreToolUse while blocked on a human answer; map to waiting like grok's ask_user_question.
+  if (eventName === 'SessionStart') {
+    // Why: Codex fires SessionStart when opening or resuming an idle TUI, before
+    // a user prompt exists; reset stale turn/session cache without emitting state.
+    // Cache provider session identity for the next real status event.
+    clearPaneTurnCacheState(state, paneKey)
+    state.codexSubagentRosterByPaneKey.delete(paneKey)
+    state.codexLeadStateByPaneKey.delete(paneKey)
+    // Why: retain session id from SessionStart for the subsequent working event.
+    const extracted = extractAgentProviderSession('codex', hookPayload)
+    if (extracted) {
+      state.lastProviderSessionByPaneKey.set(paneKey, extracted)
+    } else {
+      state.lastProviderSessionByPaneKey.delete(paneKey)
+    }
+    if (state.lastStatusByPaneKey.get(paneKey)?.payload.agentType === 'codex') {
+      state.lastStatusByPaneKey.delete(paneKey)
+    }
+    return null
+  }
+
+  // Why: Codex's request_user_input (0.145+) is auto-allowed, so it fires PreToolUse while
+  // blocked on a human answer; map to waiting like generic ask-user-question tools.
   const isUserInputPreTool =
     eventName === 'PreToolUse' &&
     isAskUserQuestionTool(readString(hookPayload, 'tool_name') ?? readString(hookPayload, 'name'))
-  const stateName =
-    eventName === 'SessionStart' ||
+  let stateName: 'working' | 'waiting' | 'done' | null =
     eventName === 'UserPromptSubmit' ||
     (eventName === 'PreToolUse' && !isUserInputPreTool) ||
     eventName === 'PostToolUse'
@@ -3305,6 +3359,14 @@ function normalizeCodexEvent(
           : null
   if (!stateName) {
     return null
+  }
+
+  if (
+    stateName === 'working' &&
+    eventName !== 'UserPromptSubmit' &&
+    codexPayloadIsInterrupted(hookPayload)
+  ) {
+    stateName = 'done'
   }
 
   const agentId = readString(hookPayload, 'agent_id')
@@ -3322,10 +3384,7 @@ function normalizeCodexEvent(
     return buildCodexChildDrivenStatusPayload(state, eventName, paneKey, hookPayload)
   }
 
-  if (eventName === 'SessionStart') {
-    // Why: a pane can host a new Codex process after the old one exited without child Stop hooks.
-    state.codexSubagentRosterByPaneKey.delete(paneKey)
-  } else if (eventName === 'Stop') {
+  if (eventName === 'Stop') {
     // Why: Codex CLI 0.144 can omit child Stop hooks; later child activity safely recreates any agent still running.
     state.codexSubagentRosterByPaneKey.delete(paneKey)
   }
@@ -3333,17 +3392,22 @@ function normalizeCodexEvent(
   state.codexLeadStateByPaneKey.set(paneKey, {
     state: stateName,
     model:
-      normalizeOptionalField(hookPayload['model'], AGENT_MODEL_MAX_LENGTH) ??
-      (eventName === 'SessionStart' ? undefined : previousLead?.model)
+      normalizeOptionalField(hookPayload['model'], AGENT_MODEL_MAX_LENGTH) ?? previousLead?.model
   })
   const effectiveState = codexRosterEffectiveState(
     state.codexSubagentRosterByPaneKey.get(paneKey),
     stateName
   )
-  return buildCodexStatusPayload(state, eventName, promptText, paneKey, hookPayload, {
+  const payload = buildCodexStatusPayload(state, eventName, promptText, paneKey, hookPayload, {
     stateName: effectiveState,
     updateLead: true
   })
+  if (!payload) {
+    return null
+  }
+  const interrupted =
+    stateName === 'done' && codexPayloadIsInterrupted(hookPayload) ? true : undefined
+  return interrupted ? { ...payload, interrupted } : payload
 }
 
 function normalizeOpenCodeFamilyEvent(
@@ -3981,10 +4045,11 @@ export function normalizeHookPayload(
   // Why: connectionId is null here; ingestRemote stamps it from mux identity on receive. See docs/design/agent-status-over-ssh.md §5.
   // Why: Codex child hooks expose the child's session_id on the parent's pane;
   // treating it as the root resume id would replace the terminal's real session.
+  // SessionStart may cache the root session id before any visible status event.
   const providerSession =
     source === 'codex' && readString(hookPayloadRecord, 'agent_id')
       ? null
-      : extractAgentProviderSession(source, hookPayloadRecord)
+      : (resolveHookProviderSession(state, source, paneKey, hookPayloadRecord) ?? null)
   const providerSessionOnly =
     source === 'pi' && eventName === 'session_start' && providerSession !== null
   // Why: Pi session_start carries resume identity while idle; providerSessionOnly makes receivers discard the placeholder row.
