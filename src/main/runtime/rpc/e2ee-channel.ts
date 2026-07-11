@@ -7,7 +7,11 @@ import {
 } from './mobile-e2ee-v2-desktop-session'
 import type { DesktopMobileE2EEV2OutboundItem as V2OutboundItem } from './mobile-e2ee-v2-desktop-outbound'
 import { handleDesktopMobileE2EEV2Inbound } from './mobile-e2ee-v2-desktop-inbound'
-import { authenticateMobileE2EE, decodeMobileE2EEPublicKey } from './mobile-e2ee-auth-validation'
+import {
+  authenticateMobileE2EE,
+  decodeMobileE2EEPublicKey,
+  parseMobileE2EEAuthDeviceName
+} from './mobile-e2ee-auth-validation'
 import {
   isMobileE2EEBinaryPayloadWithinLimit,
   isMobileE2EEOutboundItemWithinLimit,
@@ -19,6 +23,24 @@ import { MobileE2EEDesktopOutboundOwner } from './mobile-e2ee-desktop-outbound-o
 
 const HANDSHAKE_TIMEOUT_MS = 10_000
 const MAX_CONSECUTIVE_DECRYPT_FAILURES = 5
+
+const MAX_REPORTED_DEVICE_NAME_LENGTH = 64
+
+export function sanitizeReportedDeviceName(raw: unknown): string | null {
+  if (typeof raw !== 'string') {
+    return null
+  }
+  const cleaned = Array.from(raw)
+    .filter((character) => {
+      const codePoint = character.codePointAt(0)
+      return codePoint !== undefined && codePoint > 0x1f && codePoint !== 0x7f
+    })
+    .join('')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, MAX_REPORTED_DEVICE_NAME_LENGTH)
+  return cleaned.length > 0 ? cleaned : null
+}
 
 export type E2EEChannelOptions = {
   serverSecretKey: Uint8Array
@@ -62,6 +84,7 @@ export class E2EEChannel {
 
   deviceToken: string | null = null
   authenticatedDevice: E2EEAuthenticatedDevice | null = null
+  reportedDeviceName: string | null = null
 
   constructor(ws: WebSocket, options: E2EEChannelOptions) {
     this.ws = ws
@@ -248,6 +271,9 @@ export class E2EEChannel {
 
     this.deviceToken = authenticatedDevice.deviceToken
     this.authenticatedDevice = authenticatedDevice
+    this.reportedDeviceName = sanitizeReportedDeviceName(
+      parseMobileE2EEAuthDeviceName(plaintext)
+    )
     this.state = 'ready'
 
     if (this.handshakeTimer) {
@@ -320,6 +346,7 @@ export class E2EEChannel {
     }
     this.sharedKey = null
     this.authenticatedDevice = null
+    this.reportedDeviceName = null
     this.v2Session = null
     this.messageHandler = null
     this.binaryMessageHandler = null

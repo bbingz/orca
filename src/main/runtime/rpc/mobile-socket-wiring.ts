@@ -158,11 +158,15 @@ export class MobileSocketWiring {
           }
           return toAuthenticatedDevice(device)
         },
-        onReady: (_channel, device) => {
+        onReady: (channel, device) => {
           const socket = { ws, connectionId, device, transport: metadata }
           this.authenticatedSockets.set(ws, socket)
           transport.setClientId(ws, device.deviceToken)
           this.deviceRegistry.updateLastSeen(device.deviceId)
+          // Why: phone reports marketing model on auth so Settings stops showing QR-time "Mobile <date>".
+          if (channel.reportedDeviceName) {
+            this.deviceRegistry.updateName(device.deviceId, channel.reportedDeviceName)
+          }
           this.onReady?.(socket)
         },
         onError: (code, reason) => {

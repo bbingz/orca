@@ -7,6 +7,8 @@ export type MobileE2EEAuth = {
   deviceToken: string
   v?: 2
   transcriptHashB64?: string
+  // Why: optional marketing model from the phone so desktop can rename "Mobile <date>".
+  deviceName?: string
 }
 
 export function isValidMobileE2EEAuthVersion(
@@ -16,8 +18,12 @@ export function isValidMobileE2EEAuthVersion(
   if (!v2Session) {
     return auth.v === undefined && auth.transcriptHashB64 === undefined
   }
+  const keys = Object.keys(auth).sort().join(',')
+  const allowed =
+    keys === 'deviceToken,transcriptHashB64,type,v' ||
+    keys === 'deviceName,deviceToken,transcriptHashB64,type,v'
   return (
-    Object.keys(auth).sort().join(',') === 'deviceToken,transcriptHashB64,type,v' &&
+    allowed &&
     auth.v === 2 &&
     auth.transcriptHashB64 === v2Session.transcriptHashB64
   )
@@ -52,5 +58,14 @@ export function decodeMobileE2EEPublicKey(value: string): Uint8Array | null {
     return publicKeyFromBase64(value)
   } catch {
     return null
+  }
+}
+
+export function parseMobileE2EEAuthDeviceName(plaintext: string): unknown {
+  try {
+    const auth = parseRemoteRuntimeJsonText(plaintext) as MobileE2EEAuth
+    return auth.deviceName
+  } catch {
+    return undefined
   }
 }
