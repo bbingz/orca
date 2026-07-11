@@ -16,33 +16,52 @@ const AGENT_DRAFT_PASTE_ESCAPE_CODE_POINT = 0x1b
 const AGENT_DRAFT_PASTE_INERT_ESCAPE_CODE_POINT = 0x241b
 const AGENT_DRAFT_PASTE_INERT_ESCAPE = '\u241b'
 
+export type AgentDraftPasteContentOutcome = 'delivered' | 'not-written' | 'delivery-uncertain'
+
 export async function sendAgentDraftPasteContent(
   settings: Pick<GlobalSettings, 'activeRuntimeEnvironmentId'> | null | undefined,
   ptyId: string,
   content: string
 ): Promise<boolean> {
+  return (await sendAgentDraftPasteContentWithOutcome(settings, ptyId, content)) === 'delivered'
+}
+
+export async function sendAgentDraftPasteContentWithOutcome(
+  settings: Pick<GlobalSettings, 'activeRuntimeEnvironmentId'> | null | undefined,
+  ptyId: string,
+  content: string
+): Promise<AgentDraftPasteContentOutcome> {
   if (content.length > AGENT_DRAFT_PASTE_MAX_BYTES) {
-    return false
+    return 'not-written'
   }
 
   const directMeasurement = measureSanitizedUtf8ByteLength(content, {
     stopAfterBytes: AGENT_DRAFT_PASTE_DIRECT_MAX_BYTES
   })
   if (!directMeasurement.exceededLimit) {
-    return await sendRuntimePtyInputVerified(
-      settings,
-      ptyId,
-      [BRACKETED_PASTE_START, sanitizeTerminalPasteText(content), BRACKETED_PASTE_END].join('')
-    )
+    try {
+      return (await sendRuntimePtyInputVerified(
+        settings,
+        ptyId,
+        [BRACKETED_PASTE_START, sanitizeTerminalPasteText(content), BRACKETED_PASTE_END].join('')
+      ))
+        ? 'delivered'
+        : 'not-written'
+    } catch {
+      // Why: a remote timeout can lose only the acknowledgement; replaying the
+      // same prompt could duplicate bytes that already reached the terminal.
+      return 'delivery-uncertain'
+    }
   }
 
   // Why: generated prompts can be paste-sized; yield during accepted-size
   // preflight before starting any PTY writes so the renderer is not pinned.
   if (await isSanitizedDraftPasteOverLimit(content, AGENT_DRAFT_PASTE_MAX_BYTES)) {
-    return false
+    return 'not-written'
   }
 
   let bracketedPasteOpen = false
+  let deliveryStarted = false
   for (const chunk of iterateAgentDraftPasteContentChunks(content)) {
     let accepted = false
     try {
@@ -51,21 +70,22 @@ export async function sendAgentDraftPasteContent(
       if (bracketedPasteOpen && chunk !== BRACKETED_PASTE_END) {
         await closeAgentDraftBracketedPaste(settings, ptyId)
       }
-      return false
+      return 'delivery-uncertain'
     }
     if (!accepted) {
       if (bracketedPasteOpen && chunk !== BRACKETED_PASTE_END) {
         await closeAgentDraftBracketedPaste(settings, ptyId)
       }
-      return false
+      return deliveryStarted ? 'delivery-uncertain' : 'not-written'
     }
+    deliveryStarted = true
     if (chunk === BRACKETED_PASTE_START) {
       bracketedPasteOpen = true
     } else if (chunk === BRACKETED_PASTE_END) {
       bracketedPasteOpen = false
     }
   }
-  return true
+  return 'delivered'
 }
 
 export function chunkAgentDraftPasteContent(
