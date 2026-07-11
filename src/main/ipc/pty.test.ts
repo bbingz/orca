@@ -10459,7 +10459,7 @@ describe('registerPtyHandlers', () => {
     }
   )
 
-  posixOnlyIt('waits for shell-ready when Codex uses the native prefill flag', async () => {
+  posixOnlyIt('waits for shell-ready when a Codex positional prompt opts in', async () => {
     vi.useFakeTimers()
     const mockProc = createMockProc()
     spawnMock.mockReturnValue(mockProc.proc)
@@ -10470,7 +10470,8 @@ describe('registerPtyHandlers', () => {
         cols: 80,
         rows: 24,
         cwd: '/tmp',
-        command: "codex --prefill 'linked issue context'"
+        command: "codex 'linked issue context'",
+        startupCommandDelivery: 'shell-ready'
       })
 
       const [, , options] = spawnMock.mock.calls[0]!
@@ -10481,7 +10482,7 @@ describe('registerPtyHandlers', () => {
       await Promise.resolve()
       vi.runAllTimers()
       await Promise.resolve()
-      expect(mockProc.proc.write).toHaveBeenCalledWith("codex --prefill 'linked issue context'\n")
+      expect(mockProc.proc.write).toHaveBeenCalledWith("codex 'linked issue context'\n")
     } finally {
       vi.useRealTimers()
     }
