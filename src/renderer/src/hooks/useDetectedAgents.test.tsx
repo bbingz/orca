@@ -15,6 +15,7 @@ import {
 } from '../../../shared/protocol-version'
 import { clearRuntimeCompatibilityCacheForTests } from '@/runtime/runtime-rpc-client'
 
+const detectAgents = vi.fn()
 const detectRemoteAgents = vi.fn()
 const refreshLocalAgents = vi.fn()
 const runtimeEnvironmentCall = vi.fn()
@@ -50,6 +51,7 @@ beforeEach(() => {
   clearRuntimeCompatibilityCacheForTests()
   useAppStore.setState(initialAppState, true)
   latestHookResult = null
+  detectAgents.mockReset().mockResolvedValue([])
   detectRemoteAgents.mockReset().mockResolvedValue([])
   refreshLocalAgents.mockReset().mockResolvedValue({
     agents: [],
@@ -80,7 +82,11 @@ beforeEach(() => {
     })
   })
   globalThis.window.api = {
-    preflight: { detectRemoteAgents, refreshAgents: refreshLocalAgents },
+    preflight: {
+      detectAgents,
+      detectRemoteAgents,
+      refreshAgents: refreshLocalAgents
+    },
     runtimeEnvironments: { call: runtimeEnvironmentCall }
   } as unknown as Window['api']
 })
@@ -142,6 +148,43 @@ describe('useDetectedAgents (unresolved target)', () => {
     expect(refreshLocalAgents).not.toHaveBeenCalled()
     expect(detectRemoteAgents).not.toHaveBeenCalled()
     expect(runtimeEnvironmentCall).not.toHaveBeenCalled()
+  })
+})
+
+describe('useDetectedAgents (local call site)', () => {
+  it('fires local detection once on mount and does not thrash after an empty result', async () => {
+    const root = await renderProbe({ kind: 'local' })
+
+    expect(detectAgents).toHaveBeenCalledTimes(1)
+    expect(useAppStore.getState().detectedAgentIds).toEqual([])
+
+    await act(async () => {
+      root.render(createElement(HookProbe, { target: { kind: 'local' } }))
+    })
+    await flushEffects()
+
+    // Same mounted surface: empty remount-retry marks once; re-render must not thrash.
+    expect(detectAgents).toHaveBeenCalledTimes(1)
+  })
+
+  it('retries a cached empty local result when the launch surface is reopened', async () => {
+    // Why: WSL/local cold-start soft-fails to [] (#8366). Reopening TabBar /
+    // QuickLaunch must re-enter ensureDetectedAgents without a project switch.
+    const firstRoot = await renderProbe({ kind: 'local' })
+
+    expect(detectAgents).toHaveBeenCalledTimes(1)
+    expect(useAppStore.getState().detectedAgentIds).toEqual([])
+
+    await act(async () => {
+      firstRoot.unmount()
+    })
+    roots.splice(roots.indexOf(firstRoot), 1)
+    detectAgents.mockResolvedValueOnce(['grok'])
+
+    await renderProbe({ kind: 'local' })
+
+    expect(detectAgents).toHaveBeenCalledTimes(2)
+    expect(useAppStore.getState().detectedAgentIds).toEqual(['grok'])
   })
 })
 

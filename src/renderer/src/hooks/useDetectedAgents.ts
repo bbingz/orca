@@ -54,6 +54,9 @@ export function useDetectedAgents(
 ): UseDetectedAgentsResult {
   const target = normalizeAgentDetectionTarget(connectionId)
   const observedRemoteTargetKeysRef = useRef<Set<string>>(new Set())
+  // Why: remounted local launch surfaces (TabBar/QuickLaunch) must re-probe after
+  // a cold-start empty [] without requiring a project/context switch (#8366).
+  const retriedEmptyLocalRef = useRef(false)
   // Why: undefined means "store not yet hydrated" — we don't know if the
   // worktree is local or remote yet. This prevents flashing local agents for
   // remote worktrees during hydration.
@@ -158,7 +161,14 @@ export function useDetectedAgents(
         void state.ensureRuntimeDetectedAgents(targetId)
       }
     } else {
+      // Why: local/WSL cold-start soft-fails to [] (#8366). Store non-sticky empty
+      // is not enough — TabBar/QuickLaunch only re-enter via this hook, so mirror
+      // SSH/runtime: one fresh probe when a launch surface remounts on [].
       if (detectedIds === null) {
+        retriedEmptyLocalRef.current = false
+        void state.ensureDetectedAgents()
+      } else if (detectedIds.length === 0 && !retriedEmptyLocalRef.current) {
+        retriedEmptyLocalRef.current = true
         void state.ensureDetectedAgents()
       }
     }
