@@ -17,7 +17,8 @@ import {
   decodeCodexTranscriptLine,
   decodeGrokTranscriptLine
 } from './transcript-line-decoders'
-import { decodeTranscriptStream } from './transcript-stream-lines'
+import { decodeTranscriptStream, TranscriptDecodeLimitError } from './transcript-stream-lines'
+import type { TranscriptDecodeLimits } from './transcript-stream-lines'
 
 export type SubscribeNativeChatTranscriptArgs = ResolveSessionFileOptions & {
   agent: AgentType
@@ -29,6 +30,10 @@ export type SubscribeNativeChatTranscriptArgs = ResolveSessionFileOptions & {
   filePath?: string
   /** Coalesce window for rapid fs.watch events (ms). Defaults to 40ms. */
   debounceMs?: number
+  /** Optional streaming limits for paired-client subscriptions. */
+  limits?: TranscriptDecodeLimits
+  /** Test-only synchronization point after a read's EOF snapshot is fixed. */
+  afterReadSnapshotForTests?: (end: number) => Promise<void>
 }
 
 export type NativeChatTranscriptSubscription = {
@@ -85,9 +90,10 @@ async function fileSize(filePath: string): Promise<number> {
 async function readAppendedMessages(
   filePath: string,
   start: number,
-  decode: (line: string, fallbackId: string) => NativeChatMessage | null
+  end: number,
+  decode: (line: string, fallbackId: string) => NativeChatMessage | null,
+  limits?: TranscriptDecodeLimits
 ): Promise<{ messages: NativeChatMessage[]; consumedTo: number }> {
-  const end = await fileSize(filePath)
   if (end <= start) {
     // File shrank (rotation/replacement) or unchanged — caller resets offset.
     return { messages: [], consumedTo: end }
@@ -106,7 +112,8 @@ async function readAppendedMessages(
       filePath,
       start,
       decode,
-      false
+      false,
+      limits
     )
     return { messages, consumedTo: start + consumedBytes }
   } finally {
@@ -160,18 +167,34 @@ export async function subscribeNativeChatTranscript(
     try {
       do {
         pendingReadRequested = false
+        let attemptedEnd = offset
         try {
           const currentSize = await fileSize(filePath!)
           if (currentSize < offset) {
             // Rotation/replacement/truncation: re-read from the top.
             offset = 0
           }
-          const { messages, consumedTo } = await readAppendedMessages(filePath!, offset, decode!)
+          attemptedEnd = currentSize
+          await args.afterReadSnapshotForTests?.(currentSize)
+          const { messages, consumedTo } = await readAppendedMessages(
+            filePath!,
+            offset,
+            currentSize,
+            decode!,
+            args.limits
+          )
           offset = consumedTo
           if (!closed && messages.length > 0) {
             onAppend(messages)
           }
-        } catch {
+        } catch (error) {
+          if (error instanceof TranscriptDecodeLimitError) {
+            // Why: retrying an oversized seed from byte zero on every append
+            // creates a permanent decode loop. Skip that history once, then
+            // continue tailing records appended after this read snapshot.
+            offset = attemptedEnd
+            continue
+          }
           // Why: a transient read failure (EACCES/EIO/ENOENT during rotation)
           // must not leave the subscription permanently deaf. Stop this drain;
           // the finally resets `reading` so a later fs event re-arms the read.
