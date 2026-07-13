@@ -4635,7 +4635,7 @@ describe('connectPanePty', () => {
     }
   })
 
-  it('pastes a startup draft when Codex renders its composer in the first observed output', async () => {
+  it('orders a startup draft behind xterm focus input when Codex renders its composer', async () => {
     const { connectPanePty } = await import('./pty-connection')
 
     const capturedDataCallback: { current: ((data: string) => void) | null } = { current: null }
@@ -4668,13 +4668,27 @@ describe('connectPanePty', () => {
     await flushAsyncTicks()
     expect(capturedDataCallback.current).not.toBeNull()
 
+    // A focused xterm emits CSI I after Codex enables focus reporting. The
+    // startup draft must use the same transport instead of racing a direct IPC.
+    ;(
+      pane.terminal.onData as unknown as {
+        mock: { calls: [(data: string) => void][] }
+      }
+    ).mock.calls[0]?.[0]('\x1b[I')
+    ;(mockStoreState.recordTerminalInput as ReturnType<typeof vi.fn>).mockClear()
     capturedDataCallback.current?.('\x1b[?2004h\x1b[2K\x1b[1m›\x1b[0m Ask Codex to do anything')
     await flushAsyncTicks()
 
-    expect(window.api.pty.writeAccepted).toHaveBeenCalledWith(
-      'pty-codex',
+    expect(transport.sendInputAccepted).toHaveBeenCalledWith(
       '\x1b[200~https://github.com/stablyai/orca/issues/42\x1b[201~'
     )
+    expect(transport.sendInput.mock.calls.map(([data]) => data)).toEqual([
+      '\x1b[I',
+      '\x1b[200~https://github.com/stablyai/orca/issues/42\x1b[201~'
+    ])
+    expect(window.api.pty.writeAccepted).not.toHaveBeenCalled()
+    expect(mockStoreState.recordTerminalInput).toHaveBeenCalledOnce()
+    expect(mockStoreState.recordTerminalInput).toHaveBeenCalledWith(makePaneKey('tab-1', LEAF_1))
   })
 
   it('retries the same startup draft after an explicit no-write result', async () => {
@@ -4721,7 +4735,12 @@ describe('connectPanePty', () => {
       await flushAsyncTicks()
 
       expect(sendDraft).toHaveBeenCalledTimes(2)
-      expect(sendDraft).toHaveBeenLastCalledWith(expect.anything(), 'pty-codex', 'linked draft')
+      expect(sendDraft).toHaveBeenLastCalledWith(
+        expect.anything(),
+        'pty-codex',
+        'linked draft',
+        expect.any(Function)
+      )
       expect(
         beginCurrentDeliveryAttempt({
           worktreeId: 'wt-1',
@@ -13730,6 +13749,9 @@ describe('connectPanePty', () => {
   it('attaches remote runtime PTY handles instead of creating a replacement terminal', async () => {
     const { connectPanePty } = await import('./pty-connection')
     const transport = createMockTransport()
+    transport.attach.mockImplementation(() => {
+      transport.getPtyId.mockReturnValue('remote:env-1@@terminal-1')
+    })
     transportFactoryQueue.push(transport)
 
     mockStoreState = {
@@ -13753,7 +13775,8 @@ describe('connectPanePty', () => {
     expect(transport.attach).toHaveBeenCalledWith(
       expect.objectContaining({ existingPtyId: 'remote:terminal-1' })
     )
-    expect(deps.syncPanePtyLayoutBinding).toHaveBeenCalledWith(2, 'remote:terminal-1')
+    expect(deps.updateTabPtyId).toHaveBeenCalledWith('tab-1', 'remote:env-1@@terminal-1')
+    expect(deps.syncPanePtyLayoutBinding).toHaveBeenCalledWith(2, 'remote:env-1@@terminal-1')
   })
 
   it('cold-spawns slept remote runtime PTYs instead of reattaching the preserved handle', async () => {
@@ -17917,7 +17940,9 @@ describe('connectPanePty', () => {
         binding.sampleForegroundAgentOnFocus()
         await vi.advanceTimersByTimeAsync(10_000)
 
-        expect(window.api.pty.confirmForegroundProcess).not.toHaveBeenCalled()
+        // Scope to this pane's pty id: a delayed confirm for another test's
+        // default `tab-pty` pane can fire during this advance and is not our subject.
+        expect(window.api.pty.confirmForegroundProcess).not.toHaveBeenCalledWith(ptyId)
       } finally {
         restoreUserAgent()
       }

@@ -220,6 +220,7 @@ import { isTuiAgent, TUI_AGENT_CONFIG } from '../../../../shared/tui-agent-confi
 import { createDraftPasteReadyScanner } from '../../../../shared/draft-paste-ready-scanner'
 import { sendAgentDraftPasteContentWithOutcome } from '@/lib/agent-draft-paste-content'
 import { pasteDraftToAgentPtyWhenReadyWithOutcome } from '@/lib/agent-paste-draft'
+import { writeTerminalPastePtyInput } from './terminal-pty-paste-writer'
 import {
   beginAgentStartupDeliveryAttempt,
   queuePendingAgentStartupDelivery,
@@ -3948,6 +3949,7 @@ export function connectPanePty(
       : null
     let startupDraftReadinessArmed = false
     let startupDraftPasteSettled = !ownsStartupDraftPaste
+    let startupDraftInputRecorded = false
     let startupDraftQuietTimer: ReturnType<typeof setTimeout> | null = null
     let startupDraftHardTimer: ReturnType<typeof setTimeout> | null = null
     const clearStartupDraftPasteTimers = (): void => {
@@ -3972,6 +3974,18 @@ export function connectPanePty(
         return null
       }
       return ptyId
+    }
+    const writeStartupDraftPtyInput = async (data: string): Promise<boolean> => {
+      // Why: xterm focus reports share this transport queue. Bypassing it can
+      // race CSI I against the draft on ConPTY and expose a literal `[I` prefix.
+      const accepted = await writeTerminalPastePtyInput(transport, data)
+      if (accepted && !startupDraftInputRecorded) {
+        // Why: this transport write bypasses xterm's user-input signal; keep
+        // the composed draft from being discarded by later hibernation.
+        startupDraftInputRecorded = true
+        recordTerminalInputForHibernation()
+      }
+      return accepted
     }
     const handOffFailedStartupDraftPaste = (failedPtyId: string): void => {
       startupDraftPasteSettled = true
@@ -4008,7 +4022,8 @@ export function connectPanePty(
               ? await sendAgentDraftPasteContentWithOutcome(
                   getSettingsForWorktreeRuntimeOwner(useAppStore.getState(), deps.worktreeId),
                   retryPtyId,
-                  startupDraftPrompt
+                  startupDraftPrompt,
+                  writeStartupDraftPtyInput
                 )
               : await pasteDraftToAgentPtyWhenReadyWithOutcome({
                   tabId: retryTabId,
@@ -4040,7 +4055,12 @@ export function connectPanePty(
       }
       startupDraftPasteInFlight = true
       const settings = getSettingsForWorktreeRuntimeOwner(useAppStore.getState(), deps.worktreeId)
-      void sendAgentDraftPasteContentWithOutcome(settings, ptyId, startupDraftPrompt).then(
+      void sendAgentDraftPasteContentWithOutcome(
+        settings,
+        ptyId,
+        startupDraftPrompt,
+        writeStartupDraftPtyInput
+      ).then(
         (outcome) => {
           startupDraftPasteInFlight = false
           if (outcome === 'delivered') {
@@ -7231,12 +7251,13 @@ export function connectPanePty(
             onError: reportError
           }
         })
-        bindActivePanePty(attachPtyId, {
+        const attachedPtyId = transport.getPtyId() ?? attachPtyId
+        bindActivePanePty(attachedPtyId, {
           updateTabPtyId: 'if-missing',
           sampleVisibleForegroundAgent: true
         })
         if (attachPtyId === eagerLivePtyId) {
-          registerPaneSerializerFor(attachPtyId)
+          registerPaneSerializerFor(attachedPtyId)
         }
       } catch (err) {
         reportError(err instanceof Error ? err.message : String(err))
@@ -7286,9 +7307,10 @@ export function connectPanePty(
                 onError: reportError
               }
             })
+            const attachedPtyId = transport.getPtyId() ?? spawnedPtyId
             // Why: this path reuses a PTY spawned by an earlier mount, so no
             // later spawn event will bind this remounted pane's DOM/container.
-            bindActivePanePty(spawnedPtyId, {
+            bindActivePanePty(attachedPtyId, {
               updateTabPtyId: 'if-missing',
               sampleVisibleForegroundAgent: true
             })
