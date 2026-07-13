@@ -134,7 +134,11 @@ describe('Codex cold-compressed rollout scanning', () => {
     ])
     await writeFile(basePath, content)
     await writeFile(`${basePath}.zst`, zstdCompressSync(Buffer.from(content, 'utf-8')))
-    await utimes(basePath, new Date('2026-06-18T10:00:00.000Z'), new Date('2026-06-18T10:00:00.000Z'))
+    await utimes(
+      basePath,
+      new Date('2026-06-18T10:00:00.000Z'),
+      new Date('2026-06-18T10:00:00.000Z')
+    )
     await utimes(
       `${basePath}.zst`,
       new Date('2026-06-18T10:00:01.000Z'),
@@ -179,9 +183,8 @@ describe('Codex cold-compressed rollout scanning', () => {
     const root = await mkdtemp(join(tmpdir(), 'orca-ai-vault-codex-zst-close-'))
     tempRoots.push(root)
     const sessionPath = join(root, 'rollout.jsonl.zst')
-    const content = `${JSON.stringify({ type: 'session_meta', payload: { id: 'session' } })}\n`.repeat(
-      10_000
-    )
+    const content =
+      `${JSON.stringify({ type: 'session_meta', payload: { id: 'session' } })}\n`.repeat(10_000)
     await writeFile(sessionPath, zstdCompressSync(Buffer.from(content, 'utf-8')))
 
     const stream = openCodexRolloutStream(sessionPath)

@@ -20,9 +20,7 @@ export type PreservedCodexSessionInstallArgs = {
 }
 
 /** Installs one bounded refresh while permanently retaining every displaced inode. */
-export function installWithPreservedCodexSession(
-  args: PreservedCodexSessionInstallArgs
-): boolean {
+export function installWithPreservedCodexSession(args: PreservedCodexSessionInstallArgs): boolean {
   const preservedPaths = preservedCodexSessionPaths(args.relativePath)
   const displacedTargetPath = `${preservedPaths.dataPath}.displaced-${process.pid}-${Date.now()}`
   if (

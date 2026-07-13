@@ -94,8 +94,7 @@ export function codexSessionSourceMatchesCopiedPrefix(
   return (
     expectedFingerprintSha256 !== undefined &&
     lstatSync(sourcePath).size >= marker.targetSize &&
-    fingerprintCodexSessionFile(sourcePath, marker.targetSize) ===
-      expectedFingerprintSha256
+    fingerprintCodexSessionFile(sourcePath, marker.targetSize) === expectedFingerprintSha256
   )
 }
 

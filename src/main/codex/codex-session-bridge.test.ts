@@ -48,10 +48,7 @@ vi.mock('node:fs', async () => {
     ...actual,
     copyFileSync: (...args: Parameters<typeof actual.copyFileSync>) => {
       const result = actual.copyFileSync(...args)
-      if (
-        String(args[1]).includes('.orca-link-') &&
-        fsMockState.afterReplacementCopy !== null
-      ) {
+      if (String(args[1]).includes('.orca-link-') && fsMockState.afterReplacementCopy !== null) {
         const callback = fsMockState.afterReplacementCopy
         fsMockState.afterReplacementCopy = null
         callback()
@@ -631,9 +628,7 @@ describe('syncSystemCodexSessionsIntoManagedHome', () => {
     syncSystemCodexSessionsIntoManagedHome()
 
     expect(readFileSync(runtimeSessionPath, 'utf-8')).toBe('concurrent-target\n')
-    expect(readFileSync(getPreservedSessionPath(relativeSessionPath), 'utf-8')).toBe(
-      'source-one\n'
-    )
+    expect(readFileSync(getPreservedSessionPath(relativeSessionPath), 'utf-8')).toBe('source-one\n')
   })
 
   it('incrementally bridges session files without requiring the synchronous launch path', async () => {

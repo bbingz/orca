@@ -120,11 +120,7 @@ export function migrateCopiedCodexSessionBridge(
     const targetIdentity = copiedTargetIdentity(marker, targetPath)
     if (
       !targetIdentity ||
-      !codexSessionSourceMatchesCopiedPrefix(
-        sourcePath,
-        marker,
-        targetIdentity.fingerprintSha256
-      )
+      !codexSessionSourceMatchesCopiedPrefix(sourcePath, marker, targetIdentity.fingerprintSha256)
     ) {
       return false
     }
@@ -179,11 +175,7 @@ export function refreshCopiedCodexSessionBridge(
     const targetIdentity = copiedTargetIdentity(marker, targetPath)
     if (
       !targetIdentity ||
-      !codexSessionSourceMatchesCopiedPrefix(
-        sourcePath,
-        marker,
-        targetIdentity.fingerprintSha256
-      )
+      !codexSessionSourceMatchesCopiedPrefix(sourcePath, marker, targetIdentity.fingerprintSha256)
     ) {
       return false
     }
@@ -297,11 +289,7 @@ function restoreSymlinkBackupExclusively(backupPath: string, targetPath: string)
       process.platform === 'win32' ? 'file' : undefined
     )
   } catch (error) {
-    console.warn(
-      '[codex-session-bridge] Symlink backup requires manual review:',
-      backupPath,
-      error
-    )
+    console.warn('[codex-session-bridge] Symlink backup requires manual review:', backupPath, error)
   }
 }
 
