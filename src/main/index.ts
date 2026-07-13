@@ -2106,11 +2106,10 @@ app.whenReady().then(async () => {
 
   if (serveOptions) {
     // Why: headless serve has no renderer startup barrier, so settle managed
-    // WSL command reconciliation and its agent hook server before transport.
+    // WSL command reconciliation before exposing its runtime transport.
     await managedWslCliReconciliationReady
-    await startServeAgentHookServer()
     // Why: headless PTYs must never start on the fallback provider and then be
-    // swept when an activated renderer registers desktop lifecycle handlers.
+    // swept on promotion. This barrier also settles the unified hook server.
     await localPtyStartupReady
     registerHeadlessPtyRuntime(
       runtime,
