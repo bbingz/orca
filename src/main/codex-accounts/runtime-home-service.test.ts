@@ -80,7 +80,7 @@ function createSettings(overrides: Partial<GlobalSettings> = {}): GlobalSettings
     terminalRightClickToPaste: false,
     terminalFocusFollowsMouse: false,
     terminalClipboardOnSelect: false,
-    terminalAllowOsc52Clipboard: false,
+    terminalAllowOsc52Clipboard: true,
     setupScriptLaunchMode: 'split-vertical',
     terminalScrollbackRows: 5_000,
     localAccountRuntime: 'host',
@@ -98,6 +98,7 @@ function createSettings(overrides: Partial<GlobalSettings> = {}): GlobalSettings
     floatingTerminalTriggerLocation: 'floating-button',
     diffDefaultView: 'inline',
     combinedDiffFileTreeVisibleByDefault: false,
+    prBotAuthorOverrides: [],
     notifications: {
       enabled: true,
       agentTaskComplete: true,
@@ -143,7 +144,6 @@ function createSettings(overrides: Partial<GlobalSettings> = {}): GlobalSettings
     experimentalActivity: true,
     experimentalTerminalAttention: false,
     compactWorktreeCards: false,
-    experimentalWorktreeSymlinks: false,
     terminalWindowsShell: 'powershell.exe',
     terminalWindowsPowerShellImplementation: 'powershell.exe',
     enableGitHubAttribution: true,
@@ -497,6 +497,9 @@ describe('CodexRuntimeHomeService', () => {
       getDefaultWslDistro: () => 'Ubuntu',
       getWslHome: () => wslHome
     }))
+    const wslSystemHomePath = join(wslHome, '.codex')
+    mkdirSync(wslSystemHomePath, { recursive: true })
+    writeFileSync(join(wslSystemHomePath, 'AGENTS.md'), '# WSL instructions\n', 'utf-8')
     const store = createStore(
       createSettings({
         activeCodexManagedAccountId: null,
@@ -522,9 +525,12 @@ describe('CodexRuntimeHomeService', () => {
       expect(startWslCodexSessionBridgeInBackground).toHaveBeenCalledTimes(1)
       expect(startWslCodexSessionBridgeInBackground).toHaveBeenCalledWith({
         distro: 'Ubuntu',
-        systemCodexHomePath: join(wslHome, '.codex'),
+        systemCodexHomePath: wslSystemHomePath,
         managedCodexHomePath: wslRuntimeHomePath
       })
+      const runtimeAgentsPath = join(wslRuntimeHomePath, 'AGENTS.md')
+      expect(readFileSync(runtimeAgentsPath, 'utf-8')).toBe('# WSL instructions\n')
+      expect(lstatSync(runtimeAgentsPath).isSymbolicLink()).toBe(false)
     } finally {
       vi.doUnmock('../codex/wsl-codex-session-bridge')
       vi.doUnmock('../wsl')
