@@ -125,6 +125,7 @@ export class RpcDispatcher {
       signal?: AbortSignal
       clientId?: string
       pairedDeviceId?: string
+      deviceId?: string
       clientKind?: 'mobile' | 'runtime'
       clientCapabilities?: readonly RuntimeCapability[]
       pairing?: PairingRpcContext
@@ -168,6 +169,7 @@ export class RpcDispatcher {
             connectionId: options?.connectionId,
             clientId: options?.clientId,
             pairedDeviceId: options?.pairedDeviceId,
+            deviceId: options?.deviceId,
             clientKind: options?.clientKind,
             clientCapabilities: options?.clientCapabilities,
             orchestrationCapability: request.orchestrationCapability,
@@ -210,6 +212,7 @@ export class RpcDispatcher {
           connectionId: options?.connectionId,
           clientId: options?.clientId,
           pairedDeviceId: options?.pairedDeviceId,
+          deviceId: options?.deviceId,
           clientKind: options?.clientKind,
           clientCapabilities: options?.clientCapabilities,
           pairing: options?.pairing,
