@@ -103,6 +103,7 @@ export class RpcDispatcher {
       signal?: AbortSignal
       clientId?: string
       pairedDeviceId?: string
+      deviceId?: string
       clientKind?: 'mobile' | 'runtime'
       pairing?: PairingRpcContext
       sendBinary?: (bytes: Uint8Array<ArrayBufferLike>) => boolean | void
@@ -138,6 +139,7 @@ export class RpcDispatcher {
           connectionId: options?.connectionId,
           clientId: options?.clientId,
           pairedDeviceId: options?.pairedDeviceId,
+          deviceId: options?.deviceId,
           clientKind: options?.clientKind,
           pairing: options?.pairing,
           sendBinary: options?.sendBinary,
@@ -174,6 +176,7 @@ export class RpcDispatcher {
           connectionId: options?.connectionId,
           clientId: options?.clientId,
           pairedDeviceId: options?.pairedDeviceId,
+          deviceId: options?.deviceId,
           clientKind: options?.clientKind,
           pairing: options?.pairing,
           sendBinary: options?.sendBinary,
