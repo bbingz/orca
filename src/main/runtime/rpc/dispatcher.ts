@@ -36,22 +36,30 @@ import {
   type DurableMutationInvocation
 } from './orchestration-mutation-executor'
 import { orchestrationMigrationFence } from './orchestration-contract-fence'
+import { RuntimeClosePolicy } from './runtime-close-policy'
 import { getRuntimeFeatureInteractionId } from './runtime-feature-interaction'
 
 export type DispatcherOptions = {
   runtime: OrcaRuntimeService
   methods?: readonly RpcAnyMethod[]
+  runtimeClosePolicy?: RuntimeClosePolicy
 }
 
 export class RpcDispatcher {
   private readonly runtime: OrcaRuntimeService
   private readonly registry: RpcRegistry
   private readonly orchestrationMutations: OrchestrationMutationExecutor
+  private readonly runtimeClosePolicy: RuntimeClosePolicy
 
-  constructor({ runtime, methods = ALL_RPC_METHODS }: DispatcherOptions) {
+  constructor({
+    runtime,
+    methods = ALL_RPC_METHODS,
+    runtimeClosePolicy = new RuntimeClosePolicy()
+  }: DispatcherOptions) {
     this.runtime = runtime
     this.registry = buildRegistry(methods)
     this.orchestrationMutations = new OrchestrationMutationExecutor(runtime)
+    this.runtimeClosePolicy = runtimeClosePolicy
   }
 
   async dispatch(request: RpcRequest, options?: { signal?: AbortSignal }): Promise<RpcResponse> {
@@ -101,7 +109,8 @@ export class RpcDispatcher {
           orchestrationCapability: request.orchestrationCapability,
           authenticatedCallerFingerprint: authenticatedCallerFingerprint(request),
           recordMutationReceipt: mutation?.recordReceipt,
-          orchestrationMutation: mutation?.identity
+          orchestrationMutation: mutation?.identity,
+          runtimeClosePolicy: this.runtimeClosePolicy
         })
       const result = await this.orchestrationMutations.run(request, parsedParams.value, invoke)
       this.recordRuntimeFeatureInteraction(request.method, result, undefined, request.params)
@@ -176,6 +185,7 @@ export class RpcDispatcher {
             authenticatedCallerFingerprint: authenticatedCallerFingerprint(request),
             recordMutationReceipt: mutation?.recordReceipt,
             orchestrationMutation: mutation?.identity,
+            runtimeClosePolicy: this.runtimeClosePolicy,
             pairing: options?.pairing,
             sendBinary: options?.sendBinary,
             registerBinaryStreamHandler: options?.registerBinaryStreamHandler
@@ -215,6 +225,7 @@ export class RpcDispatcher {
           deviceId: options?.deviceId,
           clientKind: options?.clientKind,
           clientCapabilities: options?.clientCapabilities,
+          runtimeClosePolicy: this.runtimeClosePolicy,
           pairing: options?.pairing,
           sendBinary: options?.sendBinary,
           registerBinaryStreamHandler: options?.registerBinaryStreamHandler
