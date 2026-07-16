@@ -4,6 +4,7 @@ import { RpcDispatcher } from './dispatcher'
 import type { RpcRequest } from './core'
 import type { OrcaRuntimeService } from '../orca-runtime'
 import { TERMINAL_METHODS } from './methods/terminal'
+import { RuntimeClosePolicy } from './runtime-close-policy'
 import type { RuntimeTerminalWait } from '../../../shared/runtime-types'
 import {
   TerminalStreamOpcode,
@@ -246,9 +247,12 @@ describe('terminal multiplex RPC', () => {
         waitForTerminal: vi.fn(() => new Promise<RuntimeTerminalWait>(() => {})),
         sendTerminal: vi.fn().mockResolvedValue({ accepted: true })
       })
+      const runtimeClosePolicy = new RuntimeClosePolicy()
+      const recordAttachedTarget = vi.spyOn(runtimeClosePolicy, 'recordAttachedTarget')
       const dispatcher = new RpcDispatcher({
         runtime,
-        methods: TERMINAL_METHODS
+        methods: TERMINAL_METHODS,
+        runtimeClosePolicy
       })
 
       const dispatchPromise = dispatcher.dispatchStreaming(
@@ -256,6 +260,9 @@ describe('terminal multiplex RPC', () => {
         (msg) => messages.push(msg),
         {
           connectionId: 'conn-1',
+          // Why: recordAttachedTarget is runtime-client-only; without this the
+          // assertion below would also pass for a no-op implementation.
+          clientKind: 'runtime',
           sendBinary: (bytes) => {
             binaryFrames.push(bytes)
           },
@@ -291,6 +298,10 @@ describe('terminal multiplex RPC', () => {
       await vi.waitFor(() =>
         expect(messages.some((msg) => JSON.parse(msg).result?.type === 'subscribed')).toBe(true)
       )
+      expect(recordAttachedTarget).toHaveBeenCalledWith(expect.any(Object), {
+        kind: 'terminal',
+        terminal: 'terminal-1'
+      })
       expect(messages.map((msg) => JSON.parse(msg).result)).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
@@ -2869,9 +2880,12 @@ describe('terminal multiplex RPC', () => {
         cleanups.set(id, cleanup)
       })
     })
+    const runtimeClosePolicy = new RuntimeClosePolicy()
+    const recordAttachedTarget = vi.spyOn(runtimeClosePolicy, 'recordAttachedTarget')
     const dispatcher = new RpcDispatcher({
       runtime,
-      methods: TERMINAL_METHODS
+      methods: TERMINAL_METHODS,
+      runtimeClosePolicy
     })
 
     const dispatchPromise = dispatcher.dispatchStreaming(
@@ -2920,6 +2934,7 @@ describe('terminal multiplex RPC', () => {
     await vi.waitFor(() => expect(pendingWaitSignal?.aborted).toBe(true))
 
     expect(runtime.readTerminal).not.toHaveBeenCalled()
+    expect(recordAttachedTarget).not.toHaveBeenCalled()
     expect(
       messages.map((msg) => JSON.parse(msg).result).filter((result) => result?.streamId === 7)
     ).toEqual([])
