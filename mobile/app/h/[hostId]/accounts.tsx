@@ -10,6 +10,7 @@ import {
 } from 'react-native'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router'
+import { useLocalSearchParams, useRouter } from 'expo-router'
 import { ChevronLeft, Check, RefreshCw, User, Gauge } from 'lucide-react-native'
 import { loadHosts } from '../../../src/transport/host-store'
 import { useHostClient } from '../../../src/transport/client-context'
@@ -18,14 +19,12 @@ import { colors, spacing } from '../../../src/theme/mobile-theme'
 import { styles } from './accounts-screen-styles'
 import { useNow } from '../../../src/hooks/use-now'
 import { ClaudeIcon, OpenAIIcon } from '../../../src/components/AgentIcons'
-import { loadVisibleUsageProviders } from '../../../src/storage/preferences'
+import { useVisibleUsageProviders } from '../../../src/components/use-visible-usage-providers'
 import {
   type AccountsSnapshot,
   type ProviderKey,
-  type UsageProviderKey,
   type UsageProviderDescriptor,
   USAGE_PROVIDERS,
-  DEFAULT_VISIBLE_USAGE_PROVIDERS,
   getActiveProviderRateLimits,
   getInactiveProviderUsage,
   getProviderUsageWindows,
@@ -70,6 +69,7 @@ export default function AccountsScreen() {
       }
     }, [])
   )
+  const visibleProviders = useVisibleUsageProviders()
 
   useFocusEffect(
     useCallback(() => {
