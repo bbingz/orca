@@ -4,6 +4,12 @@ import type { GlobalSettings } from '../../shared/types'
 import { ampHookService } from '../amp/hook-service'
 import { antigravityHookService } from '../antigravity/hook-service'
 import { claudeHookService } from '../claude/hook-service'
+import {
+  aggregateClaudeHookStatusWithConfigDirs,
+  getLedgeredClaudeConfigDirHookStatuses,
+  installDiscoveredClaudeConfigDirHooks,
+  removeLedgeredClaudeConfigDirHooks
+} from '../claude/claude-config-dir-hook-controls'
 import { codexHookService } from '../codex/hook-service'
 import { copilotHookService } from '../copilot/hook-service'
 import { cursorHookService } from '../cursor/hook-service'
@@ -21,7 +27,16 @@ type ManagedHookRemover = readonly [HookInstallAgent, () => AgentHookInstallStat
 type ManagedHookStatusReader = readonly [HookInstallAgent, () => AgentHookInstallStatus]
 
 export const MANAGED_AGENT_HOOK_INSTALLERS: readonly ManagedAgentHookInstaller[] = [
-  ['claude', () => claudeHookService.install()],
+  // Why: discovered CLAUDE_CONFIG_DIR flavor dirs ride the claude entry so
+  // they inherit its enable-gating, fail-open error handling, and telemetry
+  // attribution without becoming a separate agent kind.
+  [
+    'claude',
+    () => {
+      claudeHookService.install()
+      installDiscoveredClaudeConfigDirHooks()
+    }
+  ],
   ['openclaude', () => openClaudeHookService.install()],
   ['codex', () => codexHookService.install()],
   ['gemini', () => geminiHookService.install()],
@@ -38,7 +53,15 @@ export const MANAGED_AGENT_HOOK_INSTALLERS: readonly ManagedAgentHookInstaller[]
 ]
 
 const LOCAL_MANAGED_HOOK_REMOVERS: readonly ManagedHookRemover[] = [
-  ['claude', () => claudeHookService.remove()],
+  [
+    'claude',
+    () => {
+      // Why: ledger-driven — cleans exactly the dirs Orca installed into,
+      // then reports the primary .claude removal like before.
+      removeLedgeredClaudeConfigDirHooks()
+      return claudeHookService.remove()
+    }
+  ],
   ['openclaude', () => openClaudeHookService.remove()],
   ['codex', () => codexHookService.remove()],
   ['gemini', () => geminiHookService.remove()],
@@ -55,7 +78,14 @@ const LOCAL_MANAGED_HOOK_REMOVERS: readonly ManagedHookRemover[] = [
 ]
 
 const LOCAL_MANAGED_HOOK_STATUS_READERS: readonly ManagedHookStatusReader[] = [
-  ['claude', () => claudeHookService.getStatus()],
+  [
+    'claude',
+    () =>
+      aggregateClaudeHookStatusWithConfigDirs(
+        claudeHookService.getStatus(),
+        getLedgeredClaudeConfigDirHookStatuses()
+      )
+  ],
   ['openclaude', () => openClaudeHookService.getStatus()],
   ['codex', () => codexHookService.getStatus()],
   ['gemini', () => geminiHookService.getStatus()],
