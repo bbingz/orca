@@ -1223,7 +1223,8 @@ export function connectPanePty(
         // closed. Use it to request confirmation, never as current byte authority.
         useAppStore.getState().setPaneForegroundAgent(cacheKey, {
           agent: metadata.launchAgent,
-          shellForeground: false
+          shellForeground: false,
+          ptyId: transport.getPtyId() ?? undefined
         })
       }
       return
@@ -2002,7 +2003,13 @@ export function connectPanePty(
     isTrackablePtyId: isForegroundTrackingAllowed,
     readForegroundProcess: (id) => window.api.pty.getForegroundProcess(id),
     confirmForegroundProcess: (id) => window.api.pty.confirmForegroundProcess(id),
-    publish: (entry) => useAppStore.getState().setPaneForegroundAgent(cacheKey, entry),
+    // Why: bind the evidence to the PTY it was read from — the tracker skips
+    // publishes across rebinds, so the current transport PTY is that PTY.
+    publish: (entry) =>
+      useAppStore.getState().setPaneForegroundAgent(cacheKey, {
+        ...entry,
+        ptyId: transport.getPtyId() ?? undefined
+      }),
     hasKnownAgentIdentity: paneHasKnownAgentIdentity,
     onConfirmedShellForeground: (reason) => {
       clearStaleAgentTabTitleOnConfirmedShell()
@@ -2100,7 +2107,8 @@ export function connectPanePty(
     // as a hint, but revoke bytes until one current provider confirmation lands.
     useAppStore.getState().setPaneForegroundAgent(cacheKey, {
       agent: 'droid',
-      shellForeground: false
+      shellForeground: false,
+      ptyId: transport.getPtyId() ?? undefined
     })
     visibleForegroundSamplePending = false
     visibleForegroundSampleSettled = false
@@ -2264,6 +2272,15 @@ export function connectPanePty(
       return (
         isFreshNonDoneAgentStatus(currentStatus) && currentAgentForReplacement === replacement.agent
       )
+    },
+    onForegroundAgentInspected: (process) => {
+      const inspectedPtyId = transport.getPtyId()
+      // Why: same local-only gate as the tracker — remote/WSL inspections must
+      // not become renderer process evidence for this pane.
+      if (!inspectedPtyId || !isForegroundTrackingAllowed(inspectedPtyId)) {
+        return
+      }
+      useAppStore.getState().refreshPaneForegroundAgentObservation(cacheKey, process.agent)
     },
     shouldSuppressConfirmedProcessExitCompletion: (exited) => {
       const currentStatus = useAppStore.getState().agentStatusByPaneKey[cacheKey]
