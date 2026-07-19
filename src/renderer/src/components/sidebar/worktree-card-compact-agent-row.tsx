@@ -9,7 +9,16 @@ import { getAgentDotState } from './worktree-card-agent-summary'
 import { translate } from '@/i18n/i18n'
 import { getAgentRowPrimaryText } from '@/lib/agent-row-primary-text'
 import { lastEnteredDoneAt } from '@/components/dashboard/agent-finished-timestamp'
+import { deriveClaudeConfigDirLabel } from '../../../../shared/claude-config-dir-label'
 import CacheTimer, { usePromptCacheCountdownForPane } from './CacheTimer'
+
+function getAgentIdentityLabel(agent: DashboardAgentRowData): string {
+  const base = formatAgentTypeLabel(agent.agentType)
+  // Why: a non-default CLAUDE_CONFIG_DIR flavor (e.g. ~/.claude-grok) renders
+  // as "Claude · grok" so parallel Claude variants stay distinguishable.
+  const flavor = deriveClaudeConfigDirLabel(agent.entry.configDir)
+  return flavor ? `${base} · ${flavor}` : base
+}
 
 function formatShortTimeAgo(ts: number, now: number): string {
   const delta = now - ts
@@ -54,7 +63,7 @@ function getCompactAgentSecondary(agent: DashboardAgentRowData): string {
   if (agent.rowSource === 'subagent' && agent.entry.prompt?.trim() === agent.agentType.trim()) {
     return ''
   }
-  return formatAgentTypeLabel(agent.agentType)
+  return getAgentIdentityLabel(agent)
 }
 
 function getCompactAgentTime(agent: DashboardAgentRowData, now: number): string | null {
@@ -193,7 +202,7 @@ export const CompactAgentRow = React.memo(function CompactAgentRow({
       ) : null}
       <AgentStateDot state={dotState} size="sm" />
       {!hideIcon && (
-        <span className="inline-flex shrink-0" title={formatAgentTypeLabel(agent.agentType)}>
+        <span className="inline-flex shrink-0" title={getAgentIdentityLabel(agent)}>
           <AgentIcon agent={agentTypeToIconAgent(agent.agentType)} size={13} />
         </span>
       )}
