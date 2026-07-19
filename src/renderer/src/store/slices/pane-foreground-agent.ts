@@ -35,8 +35,9 @@ export type PaneForegroundAgentSlice = {
   setPaneForegroundAgent: (paneKey: string, entry: PaneForegroundAgentEntry) => void
   /** Freshness bump from the completion coordinator's existing inspections —
    *  identity only, never routing trust; a differing identity is ignored so
-   *  the tracker keeps sole ownership of identity changes. */
-  refreshPaneForegroundAgentObservation: (paneKey: string, agent: TuiAgent) => void
+   *  the tracker keeps sole ownership of identity changes. `ptyId` is the PTY
+   *  the inspection ran against; it binds created/rebound evidence. */
+  refreshPaneForegroundAgentObservation: (paneKey: string, agent: TuiAgent, ptyId?: string) => void
   clearPaneForegroundAgent: (paneKey: string) => void
   /** Wholesale teardown sweeps (tab close, worktree sleep/remove) retire pane
    *  keys without per-pane close events — clear their entries too. */
@@ -110,13 +111,23 @@ export const createPaneForegroundAgentSlice: StateCreator<
       }
     })
   },
-  refreshPaneForegroundAgentObservation: (paneKey, agent) => {
+  refreshPaneForegroundAgentObservation: (paneKey, agent, ptyId) => {
     set((s) => {
       const now = Date.now()
       const current = s.paneForegroundAgentByPaneKey[paneKey]
       if (current) {
         if (current.agent !== agent) {
           return s
+        }
+        // Why: evidence bound to a previous PTY must not be kept fresh across
+        // a respawn — rebind it as identity-only evidence of the inspected PTY.
+        if (ptyId !== undefined && current.ptyId !== undefined && current.ptyId !== ptyId) {
+          return {
+            paneForegroundAgentByPaneKey: {
+              ...s.paneForegroundAgentByPaneKey,
+              [paneKey]: { agent, shellForeground: false, observedAt: now, ptyId }
+            }
+          }
         }
         if (
           current.observedAt !== undefined &&
@@ -136,7 +147,12 @@ export const createPaneForegroundAgentSlice: StateCreator<
       return {
         paneForegroundAgentByPaneKey: {
           ...s.paneForegroundAgentByPaneKey,
-          [paneKey]: { agent, shellForeground: false, observedAt: now }
+          [paneKey]: {
+            agent,
+            shellForeground: false,
+            observedAt: now,
+            ...(ptyId !== undefined ? { ptyId } : {})
+          }
         }
       }
     })
