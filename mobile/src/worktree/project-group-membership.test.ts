@@ -80,7 +80,7 @@ describe('loadRepoProjectGroupResponses', () => {
     expect(warn).not.toHaveBeenCalled()
   })
 
-  it('preserves resolved project-group RPC failures', async () => {
+  it('reports and preserves resolved project-group RPC failures', async () => {
     const repoResponse = {
       id: 'repo-list',
       ok: true as const,
@@ -93,6 +93,7 @@ describe('loadRepoProjectGroupResponses', () => {
       error: { code: 'unsupported', message: 'old host' },
       _meta: { runtimeId: 'runtime' }
     }
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const client: Pick<RpcClient, 'sendRequest'> = {
       sendRequest: vi.fn(async (method: string) =>
         method === 'repo.list' ? repoResponse : groupResponse
@@ -103,6 +104,10 @@ describe('loadRepoProjectGroupResponses', () => {
       repoResponse,
       groupResponse
     ])
+    expect(warn).toHaveBeenCalledWith(
+      '[mobile workspaces] projectGroup.list failed',
+      groupResponse.error
+    )
   })
 })
 

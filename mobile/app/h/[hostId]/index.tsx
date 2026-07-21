@@ -97,9 +97,9 @@ import { getMobileWorkspaceLineageGroupKey } from '../../../src/worktree/mobile-
 import { areWorktreeListsEqual } from '../../../src/worktree/worktree-list-snapshot'
 import { repoColor } from '../../../src/worktree/repo-color'
 import {
-  WORKSPACE_GROUP_OPTIONS as GROUP_OPTIONS,
   WORKSPACE_SORT_OPTIONS as SORT_OPTIONS,
-  groupModeToolbarLabel
+  groupModeToolbarLabel,
+  workspaceGroupOptionsForCapabilities
 } from '../../../src/worktree/workspace-list-picker-options'
 import {
   buildProjectGroupByRepoId,
@@ -714,6 +714,10 @@ export function HostScreen({
   }, [filters])
   const selectedSortLabel =
     SORT_OPTIONS.find((option) => option.value === sortMode)?.label ?? 'Recent'
+  const groupOptions = useMemo(
+    () => workspaceGroupOptionsForCapabilities(hostCapabilities),
+    [hostCapabilities]
+  )
 
   const handleGroupChange = useCallback(
     (value: MobileGroupMode) => {
@@ -1211,7 +1215,7 @@ export function HostScreen({
       <PickerModal
         visible={showGroupPicker}
         title="Group By"
-        options={GROUP_OPTIONS}
+        options={groupOptions}
         selected={groupMode}
         onSelect={handleGroupChange}
         onClose={() => setShowGroupPicker(false)}

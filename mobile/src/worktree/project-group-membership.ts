@@ -6,19 +6,28 @@ import type { RpcResponse } from '../transport/types'
 import type { RepoSummary } from './host-worktree-rpc-types'
 import type { ProjectGroupBucket } from './workspace-list-sections'
 
-type ProjectGroupResponse = { ok: boolean; result?: unknown }
+type ProjectGroupResponse = { ok: boolean; result?: unknown; error?: unknown }
+
+async function loadProjectGroupResponse(
+  client: Pick<RpcClient, 'sendRequest'>
+): Promise<ProjectGroupResponse> {
+  try {
+    const response = await client.sendRequest('projectGroup.list')
+    if (!response.ok) {
+      console.warn('[mobile workspaces] projectGroup.list failed', response.error)
+    }
+    return response
+  } catch (error) {
+    console.warn('[mobile workspaces] projectGroup.list failed', error)
+    return { ok: false }
+  }
+}
 
 export async function loadRepoProjectGroupResponses(
   client: Pick<RpcClient, 'sendRequest'>
 ): Promise<[RpcResponse, ProjectGroupResponse]> {
   // Why: group labels are decorative; transport failure must not discard successful repo metadata.
-  return Promise.all([
-    client.sendRequest('repo.list'),
-    client.sendRequest('projectGroup.list').catch((error: unknown) => {
-      console.warn('[mobile workspaces] projectGroup.list failed', error)
-      return { ok: false as const }
-    })
-  ])
+  return Promise.all([client.sendRequest('repo.list'), loadProjectGroupResponse(client)])
 }
 
 // Extract the ProjectGroup list from a projectGroup.list RPC response, degrading
