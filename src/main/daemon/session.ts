@@ -9,7 +9,7 @@ import {
   type ShellReadyScanState
 } from '../shell-ready-marker-scanner'
 import { isPowerShellProcess } from '../../shared/shell-process-detection'
-import { killWithDescendantSweep } from '../pty-descendant-termination'
+import { killWithDescendantSweep, type WindowsPtyRootIdentity } from '../pty-descendant-termination'
 import type { TuiAgent } from '../../shared/types'
 import { randomUUID } from 'node:crypto'
 import { PhysicalExitTracker } from '../../shared/physical-exit-tracker'
@@ -43,6 +43,8 @@ export const PRODUCER_PAUSE_FAILSAFE_MS = 5_000
 
 export type SubprocessHandle = {
   pid: number
+  /** Spawn-time OS identity for PID-safe Windows tree teardown. */
+  windowsRootIdentity?: Promise<WindowsPtyRootIdentity | null>
   /** Live foreground process name of the PTY (node-pty's `.process`), e.g.
    *  'claude' / 'codex' / 'zsh'. Null once the child has exited. */
   getForegroundProcess(): string | null
@@ -101,6 +103,7 @@ export class Session {
   readonly incarnationId = randomUUID()
   readonly terminalHandle: string | null
   readonly launchAgent: TuiAgent | null
+  readonly windowsRootIdentity: Promise<WindowsPtyRootIdentity | null> | undefined
   readonly wslDistro: string | null
   private _state: SessionState = 'running'
   private _shellState: ShellReadyState
@@ -133,6 +136,7 @@ export class Session {
     this.sessionId = opts.sessionId
     this.terminalHandle = opts.terminalHandle ?? null
     this.launchAgent = opts.launchAgent ?? null
+    this.windowsRootIdentity = opts.subprocess.windowsRootIdentity
     this.wslDistro = opts.wslDistro ?? null
     this.subprocess = opts.subprocess
     this.onSessionExit = opts.onExit
@@ -290,7 +294,8 @@ export class Session {
           },
           {
             // Why: if the root exits during ps its PID can be recycled; never apply that stale snapshot to a different process tree.
-            ownsRoot: () => this.isAlive
+            ownsRoot: () => this.isAlive,
+            windowsRootIdentity: this.windowsRootIdentity
           }
         )
       ).catch((error) => {

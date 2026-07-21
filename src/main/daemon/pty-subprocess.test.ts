@@ -10,12 +10,14 @@ const {
   isPwshAvailableMock,
   validateWorkingDirectoryMock,
   resolveUnixShellPathMock,
-  resolveAgentForegroundProcessMock
+  resolveAgentForegroundProcessMock,
+  captureWindowsPtyRootIdentityMock
 } = vi.hoisted(() => ({
   spawnMock: vi.fn(),
   isPwshAvailableMock: vi.fn(),
   resolveUnixShellPathMock: vi.fn((shellPath: string) => shellPath),
   resolveAgentForegroundProcessMock: vi.fn(),
+  captureWindowsPtyRootIdentityMock: vi.fn(),
   validateWorkingDirectoryMock: vi.fn((cwd: string) => {
     if (cwd.includes('definitely-missing')) {
       throw new Error(
@@ -75,6 +77,10 @@ vi.mock('../providers/windows-conpty-process-membership', () => ({
   readWindowsConptyProcessIds: () => Promise.resolve(new Set([12345]))
 }))
 
+vi.mock('../pty-descendant-termination', () => ({
+  captureWindowsPtyRootIdentity: captureWindowsPtyRootIdentityMock
+}))
+
 import { createPtySubprocess, checkPtySpawnHealth } from './pty-subprocess'
 import { PREVIOUS_DAEMON_PROTOCOL_VERSIONS, PROTOCOL_VERSION } from './types'
 import { TERMINAL_GIT_CREDENTIAL_GUARD_POLICY_ENV } from '../../shared/terminal-git-credential-guard'
@@ -128,6 +134,8 @@ describe('createPtySubprocess', () => {
     resolveAgentForegroundProcessMock.mockImplementation(
       async (_pid: number, fallbackProcess: string | null) => fallbackProcess
     )
+    captureWindowsPtyRootIdentityMock.mockReset()
+    captureWindowsPtyRootIdentityMock.mockResolvedValue(null)
     validateWorkingDirectoryMock.mockClear()
     resolveUnixShellPathMock.mockReset()
     resolveUnixShellPathMock.mockImplementation((shellPath: string) => shellPath)
@@ -586,6 +594,35 @@ describe('createPtySubprocess', () => {
     })
 
     expect(handle.pid).toBe(42)
+  })
+
+  it('starts and exposes Windows recognized-agent root identity capture immediately after spawn', async () => {
+    const proc = mockPtyProcess(42)
+    spawnMock.mockReturnValue(proc)
+    const platform = Object.getOwnPropertyDescriptor(process, 'platform')
+    const identity = { startedAtUtcTicks: '638881776000000000' } as const
+    const identityPromise = Promise.resolve(identity)
+    captureWindowsPtyRootIdentityMock.mockReturnValue(identityPromise)
+    Object.defineProperty(process, 'platform', { value: 'win32' })
+
+    try {
+      const handle = createPtySubprocess({
+        sessionId: 'windows-agent',
+        cols: 80,
+        rows: 24,
+        cwd: 'C:\\repo',
+        env: { COMSPEC: CMD_ABS },
+        command: 'claude'
+      })
+
+      expect(captureWindowsPtyRootIdentityMock).toHaveBeenCalledWith(proc.pid)
+      expect(handle.windowsRootIdentity).toBe(identityPromise)
+      await expect(handle.windowsRootIdentity).resolves.toEqual(identity)
+    } finally {
+      if (platform) {
+        Object.defineProperty(process, 'platform', platform)
+      }
+    }
   })
 
   it('normalizes foreground process names from node-pty', () => {
