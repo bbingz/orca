@@ -101,7 +101,10 @@ import {
   WORKSPACE_SORT_OPTIONS as SORT_OPTIONS,
   groupModeToolbarLabel
 } from '../../../src/worktree/workspace-list-picker-options'
-import { buildProjectGroupByRepoId } from '../../../src/worktree/project-group-membership'
+import {
+  buildProjectGroupByRepoId,
+  loadRepoProjectGroupResponses
+} from '../../../src/worktree/project-group-membership'
 import type { RepoSummary } from '../../../src/worktree/host-worktree-rpc-types'
 import type { WorkspaceStatusDefinition } from '../../../../src/shared/types'
 import { DEFAULT_MOBILE_WORKSPACE_STATUSES } from '../../../src/worktree/mobile-workspace-statuses'
@@ -374,10 +377,8 @@ export function HostScreen({
       try {
         do {
           fetchRepoMetadataPendingRef.current.delete(requestClient)
-          const [repoResponse, groupResponse] = await Promise.all([
-            requestClient.sendRequest('repo.list'),
-            requestClient.sendRequest('projectGroup.list')
-          ])
+          const [repoResponse, groupResponse] =
+            await loadRepoProjectGroupResponses(requestClient)
           if (clientRef.current !== requestClient || hostId !== requestHostId || !repoResponse.ok) {
             return
           }
