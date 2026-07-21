@@ -2296,9 +2296,8 @@ export function connectPanePty(
       )
     },
     onForegroundAgentInspected: (process, inspectedPtyId) => {
-      // Why: same local-only gate as the tracker — remote/WSL inspections must
-      // not become renderer process evidence for this pane — and an inspection
-      // of a PTY the pane no longer owns (respawn race) must not either.
+      // Why: only local evidence for the pane's current PTY may refresh identity;
+      // remote/WSL or pre-respawn results cannot bind to this pane.
       if (!isForegroundTrackingAllowed(inspectedPtyId) || transport.getPtyId() !== inspectedPtyId) {
         return
       }
