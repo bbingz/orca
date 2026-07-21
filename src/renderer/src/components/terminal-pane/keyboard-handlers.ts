@@ -33,6 +33,7 @@ import { isLocalWindowsConptyPaneForCtrlArrow } from './terminal-ctrl-arrow-conp
 import { makePaneKey } from '../../../../shared/stable-pane-id'
 import { resolveWindowsShiftEnterEncodingForPane } from './terminal-windows-shift-enter'
 import { resolveTerminalInputHostPlatform } from './terminal-input-host-platform'
+import { TERMINAL_INTERRUPT_INPUT } from './xterm-bypass-policy'
 import {
   markTerminalFollowOutput,
   markTerminalPinnedViewport,
@@ -399,6 +400,41 @@ export function useTerminalKeyboardShortcuts({
         getActivePaneWindowsShiftEnterEncoding,
         isActivePaneWindowsTerminalHost
       )
+
+      const isMacNativeCopy =
+        isMac &&
+        !e.repeat &&
+        e.key.toLowerCase() === 'c' &&
+        e.metaKey &&
+        !e.ctrlKey &&
+        !e.altKey &&
+        !e.shiftKey
+
+      // Terminal selections use Electron clipboard; mouse-capturing TUIs receive ETX instead.
+      if (action?.type === 'copySelection' || isMacNativeCopy) {
+        const pane = manager.getActivePane() ?? manager.getPanes()[0]
+        if (!pane) {
+          return
+        }
+        const selection = pane.terminal.getSelection()
+        if (selection) {
+          e.preventDefault()
+          e.stopImmediatePropagation()
+          void window.api.ui.writeClipboardText(selection).catch(() => {
+            /* ignore clipboard write failures */
+          })
+          return
+        }
+        if (pane.terminal.modes.mouseTrackingMode === 'none') {
+          return
+        }
+        // Why: TUIs with mouse tracking own copy semantics; use xterm's onData path to preserve PTY accounting.
+        pane.terminal.input(TERMINAL_INTERRUPT_INPUT)
+        e.preventDefault()
+        e.stopImmediatePropagation()
+        return
+      }
+
       if (!action) {
         return
       }
@@ -434,25 +470,6 @@ export function useTerminalKeyboardShortcuts({
       }
 
       if (e.repeat) {
-        return
-      }
-
-      // Cmd/Ctrl+Shift+C copies terminal selection via Electron clipboard.
-      // This ensures Linux terminal copy works consistently.
-      if (action.type === 'copySelection') {
-        const pane = manager.getActivePane() ?? manager.getPanes()[0]
-        if (!pane) {
-          return
-        }
-        const selection = pane.terminal.getSelection()
-        if (!selection) {
-          return
-        }
-        e.preventDefault()
-        e.stopImmediatePropagation()
-        void window.api.ui.writeClipboardText(selection).catch(() => {
-          /* ignore clipboard write failures */
-        })
         return
       }
 
