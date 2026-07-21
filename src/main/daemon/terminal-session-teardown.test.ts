@@ -123,8 +123,7 @@ describe('TerminalSessionTeardown agent teardown', () => {
     killWithDescendantSweepMock.mockReset()
   })
 
-  it('propagates the daemon Session Windows root identity into agent teardown', async () => {
-    const identityPromise = Promise.resolve({ startedAtUtcTicks: '638881776000000000' })
+  it('keeps agent teardown rooted in the owned native PTY handle', async () => {
     const session = {
       beginTermination: vi.fn(() => true),
       forceKillAndWaitForExit: vi.fn(() => Promise.resolve()),
@@ -132,8 +131,7 @@ describe('TerminalSessionTeardown agent teardown', () => {
       launchAgent: 'claude',
       pid: 42,
       scheduleForceDisposeFallback: vi.fn(),
-      signalTerminationRoot: vi.fn(),
-      windowsRootIdentity: identityPromise
+      signalTerminationRoot: vi.fn()
     } as unknown as Session
     const sessions = new Map([['agent-session', session]])
     const teardown = new TerminalSessionTeardown(sessions)
@@ -143,10 +141,7 @@ describe('TerminalSessionTeardown agent teardown', () => {
     expect(killWithDescendantSweepMock).toHaveBeenCalledWith(
       session.pid,
       expect.any(Function),
-      expect.objectContaining({
-        ownsRoot: expect.any(Function),
-        windowsRootIdentity: identityPromise
-      })
+      expect.objectContaining({ ownsRoot: expect.any(Function) })
     )
     const killRoot = killWithDescendantSweepMock.mock.calls[0][1] as () => void
     killRoot()
