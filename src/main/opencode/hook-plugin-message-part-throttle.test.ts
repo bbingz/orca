@@ -42,6 +42,8 @@ describe('OpenCode plugin MessagePart throttling', () => {
   let tempDir: string
   let posts: RecordedPost[]
   let sessions: OpenCodeSession[]
+  let rejectSessionList: boolean
+  let sessionListCalls: number
   let savedEnv: Record<string, string | undefined>
   let savedFetch: typeof globalThis.fetch
 
@@ -49,6 +51,8 @@ describe('OpenCode plugin MessagePart throttling', () => {
     tempDir = mkdtempSync(join(tmpdir(), 'orca-opencode-plugin-test-'))
     posts = []
     sessions = [{ id: 'session-1' }]
+    rejectSessionList = false
+    sessionListCalls = 0
     savedEnv = {}
     for (const key of ENV_KEYS) {
       savedEnv[key] = process.env[key]
@@ -85,7 +89,13 @@ describe('OpenCode plugin MessagePart throttling', () => {
     }
     const client = {
       session: {
-        list: async () => ({ data: sessions })
+        list: async () => {
+          sessionListCalls += 1
+          if (rejectSessionList) {
+            throw new Error('temporary session lookup failure')
+          }
+          return { data: sessions }
+        }
       }
     }
     const hooks = await module.OrcaOpenCodeStatusPlugin({ client })
@@ -237,6 +247,94 @@ describe('OpenCode plugin MessagePart throttling', () => {
       'SessionBusy',
       'SessionIdle'
     ])
+  })
+
+  it('forwards child interactive requests through confirmed or temporarily unknown parents without leaking child previews', async () => {
+    sessions = [{ id: 'session-1' }, { id: 'child-1', parentID: 'session-1' }]
+    const handler = await loadPluginEventHandler()
+
+    await handler({
+      event: { type: 'permission.asked', properties: { sessionID: 'child-1', permission: 'edit' } }
+    })
+    await handler({
+      event: { type: 'question.asked', properties: { sessionID: 'child-1', question: 'continue?' } }
+    })
+
+    rejectSessionList = true
+    await handler({
+      event: {
+        type: 'permission.asked',
+        properties: { sessionID: 'child-unknown', permission: 'shell' }
+      }
+    })
+    await handler({
+      event: {
+        type: 'question.asked',
+        properties: { sessionID: 'child-unknown', question: 'retry?' }
+      }
+    })
+
+    expect(posts.map((post) => post.body.payload.hook_event_name)).toEqual([
+      'PermissionRequest',
+      'AskUserQuestion',
+      'PermissionRequest',
+      'AskUserQuestion'
+    ])
+    expect(sessionListCalls).toBe(0)
+
+    await handler({
+      event: {
+        type: 'message.updated',
+        properties: {
+          sessionID: 'child-unknown',
+          info: { id: 'unknown-child-message', role: 'assistant' }
+        }
+      }
+    })
+    await handler({
+      event: {
+        type: 'message.part.updated',
+        properties: {
+          sessionID: 'child-unknown',
+          part: {
+            type: 'text',
+            text: 'unknown child preview must stay hidden',
+            messageID: 'unknown-child-message'
+          }
+        }
+      }
+    })
+
+    expect(posts.map((post) => post.body.payload.hook_event_name)).toHaveLength(4)
+    expect(messagePartPosts()).toHaveLength(0)
+  })
+
+  it('keeps a pane busy but fails closed for unknown-parent idle and done transitions', async () => {
+    rejectSessionList = true
+    const handler = await loadPluginEventHandler()
+
+    await handler({
+      event: {
+        type: 'session.status',
+        properties: { sessionID: 'child-unknown', status: { type: 'busy' } }
+      }
+    })
+    await handler({
+      event: {
+        type: 'session.status',
+        properties: { sessionID: 'child-unknown', status: { type: 'retry' } }
+      }
+    })
+    await handler({ event: { type: 'session.idle', properties: { sessionID: 'child-unknown' } } })
+    await handler({ event: { type: 'session.error', properties: { sessionID: 'child-unknown' } } })
+    await handler({
+      event: {
+        type: 'session.status',
+        properties: { sessionID: 'child-unknown', status: { type: 'idle' } }
+      }
+    })
+
+    expect(posts.map((post) => post.body.payload.hook_event_name)).toEqual(['SessionBusy'])
   })
 
   it('does not post synthetic text parts over a real preview', async () => {
