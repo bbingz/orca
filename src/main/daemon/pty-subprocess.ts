@@ -66,7 +66,7 @@ import { assertSafeAgentStartupCwd, resolveSafePtyDefaultCwd } from '../provider
 import { ORCA_HERMES_STARTUP_QUERY_ENV } from '../../shared/hermes-startup-query'
 import type { TuiAgent } from '../../shared/types'
 import { forceKillPosixPtyProcessGroups } from '../pty/posix-pty-process-groups'
-import { captureWindowsPtyRootIdentity } from '../pty-descendant-termination'
+import { isWslShellName } from '../../shared/local-windows-terminal-runtime'
 
 const PANE_IDENTITY_ENV_KEYS = [
   'ORCA_PANE_KEY',
@@ -501,6 +501,7 @@ function spawnDaemonPtyWithWindowsFallback(args: {
   cols: number
   rows: number
   windowsFallbackAttempts: WindowsShellSpawnAttempt[]
+  useConptyJobObject: boolean
 }): {
   process: pty.IPty
   shellPath: string
@@ -516,7 +517,14 @@ function spawnDaemonPtyWithWindowsFallback(args: {
       cwd,
       env: args.env,
       // Why: legacy system ConPTY can corrupt full-width TUI rows in scrollback; bundled ConPTY has the wrap-marker behavior xterm expects.
-      ...(process.platform === 'win32' ? { useConptyDll: true } : {})
+      ...(process.platform === 'win32'
+        ? {
+            useConptyDll: true,
+            ...(args.useConptyJobObject && !isWslShellName(shellPath)
+              ? { useConptyJobObject: true }
+              : {})
+          }
+        : {})
     })
   }
 
@@ -790,7 +798,8 @@ export function createPtySubprocess(opts: PtySubprocessOptions): SubprocessHandl
       env,
       cols: size.cols,
       rows: size.rows,
-      windowsFallbackAttempts
+      windowsFallbackAttempts,
+      useConptyJobObject: process.platform === 'win32' && isAgentPty
     })
     proc = spawned.process
     // Why: a Windows fallback (e.g. cmd.exe) carries its own argv-embedded startup command; adopt the winning shell's identity + delivery flag.
@@ -805,10 +814,6 @@ export function createPtySubprocess(opts: PtySubprocessOptions): SubprocessHandl
     }
     throw err
   }
-  // Why: capture before listener/setup work widens the proof window before node-pty can lag a root exit.
-  const windowsRootIdentity =
-    process.platform === 'win32' && isAgentPty ? captureWindowsPtyRootIdentity(proc.pid) : undefined
-
   let onDataCb: ((data: string) => void) | null = null
   let onExitCb: ((code: number) => void) | null = null
   let pendingPreListenerData: string[] = []
@@ -999,7 +1004,6 @@ export function createPtySubprocess(opts: PtySubprocessOptions): SubprocessHandl
   return {
     pid: proc.pid,
     shellPath,
-    ...(windowsRootIdentity ? { windowsRootIdentity } : {}),
     ...(startupCommandDeliveredInShellArgs ? { startupCommandDeliveredInShellArgs: true } : {}),
     getForegroundProcess: () => {
       // Why: node-pty's `.process` reports the live foreground name but reads a recycled pid on a reaped pty, so bail when dead.

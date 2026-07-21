@@ -10,14 +10,12 @@ const {
   isPwshAvailableMock,
   validateWorkingDirectoryMock,
   resolveUnixShellPathMock,
-  resolveAgentForegroundProcessMock,
-  captureWindowsPtyRootIdentityMock
+  resolveAgentForegroundProcessMock
 } = vi.hoisted(() => ({
   spawnMock: vi.fn(),
   isPwshAvailableMock: vi.fn(),
   resolveUnixShellPathMock: vi.fn((shellPath: string) => shellPath),
   resolveAgentForegroundProcessMock: vi.fn(),
-  captureWindowsPtyRootIdentityMock: vi.fn(),
   validateWorkingDirectoryMock: vi.fn((cwd: string) => {
     if (cwd.includes('definitely-missing')) {
       throw new Error(
@@ -77,10 +75,6 @@ vi.mock('../providers/windows-conpty-process-membership', () => ({
   readWindowsConptyProcessIds: () => Promise.resolve(new Set([12345]))
 }))
 
-vi.mock('../pty-descendant-termination', () => ({
-  captureWindowsPtyRootIdentity: captureWindowsPtyRootIdentityMock
-}))
-
 import { createPtySubprocess, checkPtySpawnHealth } from './pty-subprocess'
 import { PREVIOUS_DAEMON_PROTOCOL_VERSIONS, PROTOCOL_VERSION } from './types'
 import { TERMINAL_GIT_CREDENTIAL_GUARD_POLICY_ENV } from '../../shared/terminal-git-credential-guard'
@@ -134,8 +128,6 @@ describe('createPtySubprocess', () => {
     resolveAgentForegroundProcessMock.mockImplementation(
       async (_pid: number, fallbackProcess: string | null) => fallbackProcess
     )
-    captureWindowsPtyRootIdentityMock.mockReset()
-    captureWindowsPtyRootIdentityMock.mockResolvedValue(null)
     validateWorkingDirectoryMock.mockClear()
     resolveUnixShellPathMock.mockReset()
     resolveUnixShellPathMock.mockImplementation((shellPath: string) => shellPath)
@@ -488,6 +480,74 @@ describe('createPtySubprocess', () => {
     )
   })
 
+  it('opts only recognized native Windows agent PTYs into ConPTY Job Object ownership', () => {
+    spawnMock.mockReturnValue(mockPtyProcess())
+    const platform = Object.getOwnPropertyDescriptor(process, 'platform')
+    Object.defineProperty(process, 'platform', { value: 'win32' })
+
+    try {
+      createPtySubprocess({
+        sessionId: 'agent',
+        cols: 80,
+        rows: 24,
+        cwd: 'C:\\repo',
+        env: { COMSPEC: CMD_ABS },
+        command: 'claude'
+      })
+      expect(spawnMock.mock.calls.at(-1)?.[2]).toMatchObject({
+        useConptyDll: true,
+        useConptyJobObject: true
+      })
+
+      createPtySubprocess({
+        sessionId: 'terminal',
+        cols: 80,
+        rows: 24,
+        cwd: 'C:\\repo',
+        env: { COMSPEC: CMD_ABS }
+      })
+      expect(spawnMock.mock.calls.at(-1)?.[2]).not.toHaveProperty('useConptyJobObject')
+
+      createPtySubprocess({
+        sessionId: 'wsl-agent-no-extension',
+        cols: 80,
+        rows: 24,
+        cwd: 'C:\\repo',
+        env: { COMSPEC: CMD_ABS },
+        command: 'codex',
+        shellOverride: 'wsl'
+      })
+      expect(spawnMock.mock.calls.at(-1)?.[2]).not.toHaveProperty('useConptyJobObject')
+    } finally {
+      if (platform) {
+        Object.defineProperty(process, 'platform', platform)
+      }
+    }
+  })
+
+  it('does not apply the native Windows Job Object option to WSL agent PTYs', () => {
+    spawnMock.mockReturnValue(mockPtyProcess())
+    const platform = Object.getOwnPropertyDescriptor(process, 'platform')
+    Object.defineProperty(process, 'platform', { value: 'win32' })
+
+    try {
+      createPtySubprocess({
+        sessionId: 'wsl-agent',
+        cols: 80,
+        rows: 24,
+        cwd: 'C:\\repo',
+        env: { COMSPEC: CMD_ABS },
+        command: 'codex',
+        shellOverride: 'wsl.exe'
+      })
+      expect(spawnMock.mock.calls.at(-1)?.[2]).not.toHaveProperty('useConptyJobObject')
+    } finally {
+      if (platform) {
+        Object.defineProperty(process, 'platform', platform)
+      }
+    }
+  })
+
   it('suppresses the first-run Powerlevel10k wizard for daemon terminals', () => {
     const proc = mockPtyProcess()
     spawnMock.mockReturnValue(proc)
@@ -594,35 +654,6 @@ describe('createPtySubprocess', () => {
     })
 
     expect(handle.pid).toBe(42)
-  })
-
-  it('starts and exposes Windows recognized-agent root identity capture immediately after spawn', async () => {
-    const proc = mockPtyProcess(42)
-    spawnMock.mockReturnValue(proc)
-    const platform = Object.getOwnPropertyDescriptor(process, 'platform')
-    const identity = { startedAtUtcTicks: '638881776000000000' } as const
-    const identityPromise = Promise.resolve(identity)
-    captureWindowsPtyRootIdentityMock.mockReturnValue(identityPromise)
-    Object.defineProperty(process, 'platform', { value: 'win32' })
-
-    try {
-      const handle = createPtySubprocess({
-        sessionId: 'windows-agent',
-        cols: 80,
-        rows: 24,
-        cwd: 'C:\\repo',
-        env: { COMSPEC: CMD_ABS },
-        command: 'claude'
-      })
-
-      expect(captureWindowsPtyRootIdentityMock).toHaveBeenCalledWith(proc.pid)
-      expect(handle.windowsRootIdentity).toBe(identityPromise)
-      await expect(handle.windowsRootIdentity).resolves.toEqual(identity)
-    } finally {
-      if (platform) {
-        Object.defineProperty(process, 'platform', platform)
-      }
-    }
   })
 
   it('normalizes foreground process names from node-pty', () => {

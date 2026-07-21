@@ -21,7 +21,6 @@ function createMockSubprocess() {
   let resumeCalls = 0
 
   return {
-    windowsRootIdentity: undefined as Promise<{ startedAtUtcTicks: string } | null> | undefined,
     written,
     signals,
     get killed() {
@@ -550,17 +549,12 @@ describe('Session', () => {
     })
 
     it('agent kill routes through the descendant sweep with the subprocess as root', () => {
-      const identityPromise = Promise.resolve({ startedAtUtcTicks: '638881776000000000' })
-      subprocess.windowsRootIdentity = identityPromise
       createSession({ launchAgent: 'claude' })
       session.kill()
       expect(killWithDescendantSweepMock).toHaveBeenCalledWith(
         subprocess.pid,
         expect.any(Function),
-        expect.objectContaining({
-          ownsRoot: expect.any(Function),
-          windowsRootIdentity: identityPromise
-        })
+        expect.objectContaining({ ownsRoot: expect.any(Function) })
       )
       // The root kill is deferred to the sweep's snapshot-first sequencing.
       expect(subprocess.killed).toBe(false)
