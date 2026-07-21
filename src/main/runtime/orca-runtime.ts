@@ -13872,10 +13872,8 @@ export class OrcaRuntimeService {
       return true
     }
     this.assertTerminalAgentStatusPtyBinding(handle, ptyId)
-    // Why: only a confirmed real shell proves the agent left. An unrecognized
-    // NON-shell foreground (wrapper/fork agent binary) must keep fresh hook
-    // state alive instead of counting as idle; an unavailable confirmation
-    // stays fail-closed like the catch path above.
+    // Why: only a confirmed shell proves exit; unknown non-shell processes may
+    // be wrapper/fork agents, while unavailable confirmation stays fail-closed.
     return confirmedProcess === null || isShellProcess(confirmedProcess)
   }
 
@@ -13992,11 +13990,19 @@ export class OrcaRuntimeService {
     } catch {
       return false
     }
+    return this.recordPtyForegroundProcessObservation(ptyId, foregroundProcess)
+  }
+
+  /** Reuses a completed provider inspection for runtime identity and wake evidence. */
+  recordPtyForegroundProcessObservation(ptyId: string, foregroundProcess: string | null): boolean {
+    const pty = this.ptysById.get(ptyId)
+    if (!pty?.connected) {
+      return false
+    }
     const foregroundAgent = foregroundProcess
       ? (recognizeAgentProcess(foregroundProcess)?.agent ?? null)
       : null
-    // Why: report before the unchanged early-return so every completed scan
-    // renews the keep-awake TTL for a still-running recognized agent.
+    // Why: every completed scan renews wake evidence, even when cached identity is unchanged.
     this.onPtyForegroundAgentEvidence?.(ptyId, foregroundAgent)
     if (pty.foregroundAgent === foregroundAgent) {
       return false
