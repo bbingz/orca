@@ -79,7 +79,7 @@ import {
 } from '../../../src/host-route-action-state'
 import {
   applyDesktopViewSettings,
-  groupModeToDesktop,
+  toDesktopViewSettingsPayload,
   type MobileGroupMode,
   type MobileSortMode,
   type MobileViewState,
@@ -89,6 +89,7 @@ import {
   getWorktreeStatus,
   isWorktreePinned,
   type FilterState,
+  type ProjectGroupBucket,
   type Worktree
 } from '../../../src/worktree/workspace-list-sections'
 import { useWorkspaceSections } from '../../../src/worktree/use-workspace-sections'
@@ -97,8 +98,10 @@ import { areWorktreeListsEqual } from '../../../src/worktree/worktree-list-snaps
 import { repoColor } from '../../../src/worktree/repo-color'
 import {
   WORKSPACE_GROUP_OPTIONS as GROUP_OPTIONS,
-  WORKSPACE_SORT_OPTIONS as SORT_OPTIONS
+  WORKSPACE_SORT_OPTIONS as SORT_OPTIONS,
+  groupModeToolbarLabel
 } from '../../../src/worktree/workspace-list-picker-options'
+import { buildProjectGroupByRepoId } from '../../../src/worktree/project-group-membership'
 import type { RepoSummary } from '../../../src/worktree/host-worktree-rpc-types'
 import type { WorkspaceStatusDefinition } from '../../../../src/shared/types'
 import { DEFAULT_MOBILE_WORKSPACE_STATUSES } from '../../../src/worktree/mobile-workspace-statuses'
@@ -173,6 +176,11 @@ export function HostScreen({
   )
   // displayName → repo id: filters key on repo id, but section headers/rows key on displayName, so bridge the two.
   const [repoIdsByName, setRepoIdsByName] = useState<Map<string, string>>(new Map())
+  // repoId -> resolved top-level project group (null when ungrouped/unknown),
+  // powering the 'projectGroup' mode. Built from repo.list + projectGroup.list.
+  const [projectGroupByRepoId, setProjectGroupByRepoId] = useState<
+    Map<string, ProjectGroupBucket | null>
+  >(new Map())
   const [showSortPicker, setShowSortPicker] = useState(false)
   const [showGroupPicker, setShowGroupPicker] = useState(false)
   const [showFilterModal, setShowFilterModal] = useState(false)
@@ -235,15 +243,7 @@ export function HostScreen({
       if (!client) {
         return
       }
-      const payload: WorkspaceViewSettings = {
-        groupBy: groupModeToDesktop(next.groupMode),
-        sortBy: next.sortMode,
-        hideSleepingWorkspaces: next.hideSleeping,
-        hideDefaultBranchWorkspace: next.hideDefaultBranch,
-        filterRepoIds: next.filterRepoIds,
-        collapsedGroups: next.collapsedGroups
-      }
-      void client.sendRequest('ui.set', payload).catch(() => {
+      void client.sendRequest('ui.set', toDesktopViewSettingsPayload(next, patch)).catch(() => {
         // Best-effort: view settings are a convenience preference.
       })
     },
@@ -319,6 +319,7 @@ export function HostScreen({
     setError('')
     setRepoColorsByName(new Map())
     setRepoIconsByName(new Map())
+    setProjectGroupByRepoId(new Map())
     repoMetadataFetchedAtRef.current = 0
     // Why: useState initializer runs only on first mount, so re-seed the cache when Expo Router reuses this screen for a new hostId.
     const freshCache = hostId ? (getCachedWorktrees(hostId) as Worktree[] | null) : null
@@ -373,13 +374,19 @@ export function HostScreen({
       try {
         do {
           fetchRepoMetadataPendingRef.current.delete(requestClient)
-          const repoResponse = await requestClient.sendRequest('repo.list')
+          const [repoResponse, groupResponse] = await Promise.all([
+            requestClient.sendRequest('repo.list'),
+            requestClient.sendRequest('projectGroup.list')
+          ])
           if (clientRef.current !== requestClient || hostId !== requestHostId || !repoResponse.ok) {
             return
           }
           const repoResult = (repoResponse as RpcSuccess).result as { repos: RepoSummary[] }
           repoMetadataFetchedAtRef.current = Date.now()
           setCachedRepos(requestHostId, repoResult.repos)
+          // Why: project groups are decorative for the list; degrade to "all
+          // ungrouped" if the call fails rather than blocking repo metadata.
+          setProjectGroupByRepoId(buildProjectGroupByRepoId(repoResult.repos, groupResponse))
           setRepoColorsByName(
             new Map(
               repoResult.repos.map((repo) => [
@@ -759,7 +766,8 @@ export function HostScreen({
     repoIdsByName,
     repoColorsByName,
     collapsedGroups,
-    workspaceStatuses
+    workspaceStatuses,
+    projectGroupByRepoId
   })
   const existingWorktreePaths = useMemo(() => worktrees.map((w) => w.path), [worktrees])
 
@@ -904,13 +912,7 @@ export function HostScreen({
               >
                 <Layers size={14} color={colors.textSecondary} />
                 <Text style={styles.sortLabel} numberOfLines={1}>
-                  {groupMode === 'none'
-                    ? 'Group'
-                    : groupMode === 'workspaceStatus'
-                      ? 'Status'
-                      : groupMode === 'repo'
-                        ? 'Repo'
-                        : 'PR'}
+                  {groupModeToolbarLabel(groupMode)}
                 </Text>
               </Pressable>
             </View>
@@ -1026,13 +1028,7 @@ export function HostScreen({
             <Pressable style={styles.modeButton} onPress={() => setShowGroupPicker(true)}>
               <Layers size={14} color={colors.textSecondary} />
               <Text style={styles.sortLabel} numberOfLines={1}>
-                {groupMode === 'none'
-                  ? 'Group'
-                  : groupMode === 'workspaceStatus'
-                    ? 'Status'
-                    : groupMode === 'repo'
-                      ? 'Repo'
-                      : 'PR'}
+                {groupModeToolbarLabel(groupMode)}
               </Text>
             </Pressable>
 
