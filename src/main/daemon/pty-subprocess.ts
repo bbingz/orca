@@ -66,6 +66,7 @@ import { assertSafeAgentStartupCwd, resolveSafePtyDefaultCwd } from '../provider
 import { ORCA_HERMES_STARTUP_QUERY_ENV } from '../../shared/hermes-startup-query'
 import type { TuiAgent } from '../../shared/types'
 import { forceKillPosixPtyProcessGroups } from '../pty/posix-pty-process-groups'
+import { captureWindowsPtyRootIdentity } from '../pty-descendant-termination'
 
 const PANE_IDENTITY_ENV_KEYS = [
   'ORCA_PANE_KEY',
@@ -591,6 +592,7 @@ export function createPtySubprocess(opts: PtySubprocessOptions): SubprocessHandl
   let startupCommandDeliveredInShellArgs = false
   let windowsFallbackAttempts: WindowsShellSpawnAttempt[] = []
   const startupAgentRecognition = recognizeAgentProcessFromCommandLine(opts.command)
+  const isAgentPty = Boolean(opts.launchAgent || startupAgentRecognition)
   const isCodexStartupCommand = startupAgentRecognition?.agent === 'codex'
   // Why: gate on the effective cwd, not raw opts.cwd — an omitted cwd becomes a safe
   // default (mirrors LocalPtyProvider). Guarding first treated undefined as root-like (#9578).
@@ -803,6 +805,9 @@ export function createPtySubprocess(opts: PtySubprocessOptions): SubprocessHandl
     }
     throw err
   }
+  // Why: capture before listener/setup work widens the proof window before node-pty can lag a root exit.
+  const windowsRootIdentity =
+    process.platform === 'win32' && isAgentPty ? captureWindowsPtyRootIdentity(proc.pid) : undefined
 
   let onDataCb: ((data: string) => void) | null = null
   let onExitCb: ((code: number) => void) | null = null
@@ -994,6 +999,7 @@ export function createPtySubprocess(opts: PtySubprocessOptions): SubprocessHandl
   return {
     pid: proc.pid,
     shellPath,
+    ...(windowsRootIdentity ? { windowsRootIdentity } : {}),
     ...(startupCommandDeliveredInShellArgs ? { startupCommandDeliveredInShellArgs: true } : {}),
     getForegroundProcess: () => {
       // Why: node-pty's `.process` reports the live foreground name but reads a recycled pid on a reaped pty, so bail when dead.
