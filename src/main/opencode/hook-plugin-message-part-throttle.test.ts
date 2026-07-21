@@ -34,17 +34,21 @@ type RecordedPost = {
 
 type PluginEventHandler = (input: { event: unknown }) => Promise<void>
 
+type OpenCodeSession = { id: string; parentID?: string }
+
 const ENV_KEYS = ['ORCA_PANE_KEY', 'ORCA_AGENT_HOOK_PORT', 'ORCA_AGENT_HOOK_TOKEN'] as const
 
 describe('OpenCode plugin MessagePart throttling', () => {
   let tempDir: string
   let posts: RecordedPost[]
+  let sessions: OpenCodeSession[]
   let savedEnv: Record<string, string | undefined>
   let savedFetch: typeof globalThis.fetch
 
   beforeEach(() => {
     tempDir = mkdtempSync(join(tmpdir(), 'orca-opencode-plugin-test-'))
     posts = []
+    sessions = [{ id: 'session-1' }]
     savedEnv = {}
     for (const key of ENV_KEYS) {
       savedEnv[key] = process.env[key]
@@ -81,8 +85,7 @@ describe('OpenCode plugin MessagePart throttling', () => {
     }
     const client = {
       session: {
-        // No parentID → root session, events flow through.
-        list: async () => ({ data: [{ id: 'session-1' }] })
+        list: async () => ({ data: sessions })
       }
     }
     const hooks = await module.OrcaOpenCodeStatusPlugin({ client })
@@ -165,6 +168,114 @@ describe('OpenCode plugin MessagePart throttling', () => {
     const eventNames = posts.map((post) => post.body.payload.hook_event_name)
     expect(eventNames).toEqual(['MessagePart', 'MessagePart', 'SessionIdle'])
     expect(posts[1].body.payload.text).toBe('first final')
+  })
+
+  it('waits for every child before a final root idle transition', async () => {
+    sessions = [
+      { id: 'session-1' },
+      { id: 'child-1', parentID: 'session-1' },
+      { id: 'child-2', parentID: 'session-1' }
+    ]
+    const handler = await loadPluginEventHandler()
+
+    await handler({
+      event: {
+        type: 'session.status',
+        properties: { sessionID: 'session-1', status: { type: 'busy' } }
+      }
+    })
+    await handler({
+      event: {
+        type: 'session.status',
+        properties: { sessionID: 'child-1', status: { type: 'busy' } }
+      }
+    })
+    await handler({
+      event: {
+        type: 'session.status',
+        properties: { sessionID: 'child-2', status: { type: 'retry' } }
+      }
+    })
+    await handler({
+      event: {
+        type: 'message.updated',
+        properties: {
+          sessionID: 'child-1',
+          info: { id: 'child-message', role: 'assistant' }
+        }
+      }
+    })
+    await handler({
+      event: {
+        type: 'message.part.updated',
+        properties: {
+          sessionID: 'child-1',
+          part: { type: 'text', text: 'child preview must stay hidden', messageID: 'child-message' }
+        }
+      }
+    })
+    await handler({
+      event: { type: 'session.idle', properties: { sessionID: 'session-1' } }
+    })
+    await handler({
+      event: { type: 'session.idle', properties: { sessionID: 'child-1' } }
+    })
+    await handler({
+      event: { type: 'session.idle', properties: { sessionID: 'session-1' } }
+    })
+
+    expect(posts.map((post) => post.body.payload.hook_event_name)).toEqual(['SessionBusy'])
+
+    await handler({
+      event: { type: 'session.error', properties: { sessionID: 'child-2' } }
+    })
+    await handler({
+      event: { type: 'session.idle', properties: { sessionID: 'session-1' } }
+    })
+
+    expect(posts.map((post) => post.body.payload.hook_event_name)).toEqual([
+      'SessionBusy',
+      'SessionIdle'
+    ])
+  })
+
+  it('does not post synthetic text parts over a real preview', async () => {
+    const handler = await loadPluginEventHandler()
+    await handler({
+      event: {
+        type: 'message.updated',
+        properties: {
+          sessionID: 'session-1',
+          info: { id: 'msg-user', role: 'user' }
+        }
+      }
+    })
+
+    await handler({
+      event: {
+        type: 'message.part.updated',
+        properties: {
+          sessionID: 'session-1',
+          part: { type: 'text', text: 'real user prompt', messageID: 'msg-user' }
+        }
+      }
+    })
+    await handler({
+      event: {
+        type: 'message.part.updated',
+        properties: {
+          sessionID: 'session-1',
+          part: {
+            type: 'text',
+            text: 'synthetic replacement',
+            synthetic: true,
+            messageID: 'msg-user'
+          }
+        }
+      }
+    })
+
+    expect(messagePartPosts().map((post) => post.body.payload.text)).toEqual(['real user prompt'])
   })
 
   it('posts user prompts immediately without consuming the assistant throttle slot', async () => {

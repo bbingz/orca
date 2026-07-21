@@ -28,14 +28,17 @@ import { OpenCodeHookService, _internals } from './hook-service'
 const { isUsableId, toSafeDirName } = _internals
 
 describe('OpenCode hook plugin source', () => {
-  it('filters child sessions via parentID lookup before forwarding events', () => {
+  it('tracks child activity by parentID while keeping child events out of root transitions', () => {
     const source = _internals.getOpenCodePluginSource()
 
-    expect(source).toContain('async function isChildSession(client, sessionID)')
+    expect(source).toContain('async function getParentSessionID(client, sessionID)')
     expect(source).toContain('const sessions = await client.session.list();')
-    expect(source).toContain('const isChild = !!session?.parentID;')
-    expect(source).toContain('if (sessionID && (await isChildSession(client, sessionID))) {')
-    expect(source).toContain('return true;')
+    expect(source).toContain(
+      'const parentID = typeof session?.parentID === "string" && session.parentID ? session.parentID : null;'
+    )
+    expect(source).toContain('const activeChildIDsByParentID = new Map();')
+    expect(source).toContain('if (parentSessionID) {')
+    expect(source).toContain('if (hasActiveChildren(sessionID)) return;')
   })
 
   it('still accepts an optional opaque plugin context instead of destructuring', () => {
