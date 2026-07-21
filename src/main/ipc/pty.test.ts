@@ -5871,6 +5871,42 @@ describe('registerPtyHandlers', () => {
     expect(provider.confirmForegroundProcess).not.toHaveBeenCalled()
   })
 
+  it('reuses renderer foreground inspections as runtime wake evidence', async () => {
+    const getForegroundProcess = vi.fn(async () => 'claude')
+    const confirmForegroundProcess = vi.fn(async () => 'claude')
+    setLocalPtyProvider({
+      getForegroundProcess,
+      confirmForegroundProcess,
+      onData: vi.fn(() => () => {}),
+      onReplay: vi.fn(() => () => {}),
+      onExit: vi.fn(() => () => {}),
+      listProcesses: vi.fn(async () => [])
+    } as never)
+    const runtime = {
+      setPtyController: vi.fn(),
+      recordPtyForegroundProcessObservation: vi.fn()
+    }
+    registerPtyHandlers(mainWindow as never, runtime as never)
+
+    await expect(
+      handlers.get('pty:getForegroundProcess')!(null, { id: 'pty-known-launch' })
+    ).resolves.toBe('claude')
+    await expect(
+      handlers.get('pty:confirmForegroundProcess')!(null, { id: 'pty-known-launch' })
+    ).resolves.toBe('claude')
+
+    expect(runtime.recordPtyForegroundProcessObservation).toHaveBeenNthCalledWith(
+      1,
+      'pty-known-launch',
+      'claude'
+    )
+    expect(runtime.recordPtyForegroundProcessObservation).toHaveBeenNthCalledWith(
+      2,
+      'pty-known-launch',
+      'claude'
+    )
+  })
+
   // Why: daemon resize is fire-and-forget, so pty:getSize must report the APPLIED size, not the requested one (Claude-Code split-pane desync).
   describe('pty:getSize reports applied size, not requested size', () => {
     function setupProviderWithAppliedSize(args: {
