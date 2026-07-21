@@ -34,6 +34,7 @@ import { makePaneKey } from '../../../../shared/stable-pane-id'
 import { resolveWindowsShiftEnterEncodingForPane } from './terminal-windows-shift-enter'
 import { resolveTerminalInputHostPlatform } from './terminal-input-host-platform'
 import { TERMINAL_INTERRUPT_INPUT } from './xterm-bypass-policy'
+import { resetTerminalKeyboardProtocolAfterInterrupt } from './use-terminal-pane-lifecycle'
 import {
   markTerminalFollowOutput,
   markTerminalPinnedViewport,
@@ -430,6 +431,7 @@ export function useTerminalKeyboardShortcuts({
         }
         // Why: TUIs with mouse tracking own copy semantics; use xterm's onData path to preserve PTY accounting.
         pane.terminal.input(TERMINAL_INTERRUPT_INPUT)
+        resetTerminalKeyboardProtocolAfterInterrupt(pane.terminal)
         e.preventDefault()
         e.stopImmediatePropagation()
         return
