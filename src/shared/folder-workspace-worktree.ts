@@ -1,11 +1,17 @@
 import type { FolderWorkspace, Worktree } from './types'
 import { folderWorkspaceKey } from './workspace-scope'
 
+// Synthetic repoId a folder workspace carries in place of a real git repo id.
+// Encodes its owning project group so consumers can recover group membership.
+export function folderWorkspaceRepoId(projectGroupId: string): string {
+  return `folder-workspace:${projectGroupId}`
+}
+
 export function folderWorkspaceToWorktree(folderWorkspace: FolderWorkspace): Worktree {
   const linkedTask = folderWorkspace.linkedTask
   return {
     id: folderWorkspaceKey(folderWorkspace.id),
-    repoId: `folder-workspace:${folderWorkspace.projectGroupId}`,
+    repoId: folderWorkspaceRepoId(folderWorkspace.projectGroupId),
     displayName: folderWorkspace.name,
     comment: folderWorkspace.comment,
     linkedIssue:

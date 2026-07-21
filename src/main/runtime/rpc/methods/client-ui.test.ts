@@ -520,6 +520,33 @@ describe('client UI RPC methods', () => {
     expect(runtime.updateUIState).not.toHaveBeenCalled()
   })
 
+  it('accepts the project-group grouping value so mobile can sync it', async () => {
+    const updated: PersistedUIState = { ...getDefaultUIState(), groupBy: 'project-group' }
+    const runtime = {
+      getRuntimeId: () => 'test-runtime',
+      updateUIState: vi.fn(() => updated)
+    } as unknown as OrcaRuntimeService
+    const dispatcher = new RpcDispatcher({ runtime, methods: CLIENT_UI_METHODS })
+
+    const response = await dispatcher.dispatch(makeRequest('ui.set', { groupBy: 'project-group' }))
+
+    expect(runtime.updateUIState).toHaveBeenCalledWith({ groupBy: 'project-group' })
+    expect(response).toMatchObject({ ok: true, result: { ui: updated } })
+  })
+
+  it('rejects an unknown groupBy value on ui.set', async () => {
+    const runtime = {
+      getRuntimeId: () => 'test-runtime',
+      updateUIState: vi.fn()
+    } as unknown as OrcaRuntimeService
+    const dispatcher = new RpcDispatcher({ runtime, methods: CLIENT_UI_METHODS })
+
+    const response = await dispatcher.dispatch(makeRequest('ui.set', { groupBy: 'folders' }))
+
+    expect(response).toMatchObject({ ok: false, error: { code: 'invalid_argument' } })
+    expect(runtime.updateUIState).not.toHaveBeenCalled()
+  })
+
   it('rejects unknown worktree card properties', async () => {
     const runtime = {
       getRuntimeId: () => 'test-runtime',

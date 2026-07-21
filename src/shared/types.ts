@@ -3206,7 +3206,11 @@ export type PersistedUIState = {
   rightSidebarExplorerView: RightSidebarExplorerView
   rightSidebarWidth: number
   markdownTocPanelWidth?: number
-  groupBy: 'none' | 'workspace-status' | 'repo' | 'pr-status'
+  /** 'project-group' groups workspaces by their repo's top-level project group.
+   *  On desktop it renders as the existing 'repo' (Project) view, which already
+   *  nests project groups; kept as a distinct persisted value so a phone's
+   *  choice survives the ui.get/ui.set round-trip instead of collapsing to 'repo'. */
+  groupBy: 'none' | 'workspace-status' | 'repo' | 'pr-status' | 'project-group'
   sortBy: 'name' | 'smart' | 'recent' | 'repo' | 'manual'
   /** Project header ordering in `groupBy: 'repo'`, independent of `sortBy`: 'manual' uses persisted order + header drag, 'recent' by latest visible activity. */
   projectOrderBy: ProjectOrderBy
