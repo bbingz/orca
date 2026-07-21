@@ -49,6 +49,8 @@ export const TERMINAL_QUERY_REPLY_INPUT_RUNTIME_CAPABILITY =
 // Why: older hosts lack the targeted settings RPCs and strip agentPrompt from
 // terminal creation, so mobile must hide Quick Commands unless both are present.
 export const TERMINAL_QUICK_COMMANDS_RUNTIME_CAPABILITY = 'terminal.quick-commands.v1' as const
+// Why: older hosts reject the project-group ui.set enum, so mobile must gate that picker value.
+export const MOBILE_PROJECT_GROUP_SYNC_RUNTIME_CAPABILITY = 'mobile.project-group-sync.v1' as const
 // Why: older hosts strip worktree.create's clientMutationId, so mobile must only
 // replay ambiguous cutovers when the host advertises idempotent create support.
 export const WORKTREE_CREATE_IDEMPOTENCY_RUNTIME_CAPABILITY =
@@ -84,6 +86,7 @@ export const RUNTIME_CAPABILITIES = [
   AI_VAULT_RUNTIME_CAPABILITY,
   TERMINAL_QUERY_REPLY_INPUT_RUNTIME_CAPABILITY,
   TERMINAL_QUICK_COMMANDS_RUNTIME_CAPABILITY,
+  MOBILE_PROJECT_GROUP_SYNC_RUNTIME_CAPABILITY,
   WORKTREE_CREATE_IDEMPOTENCY_RUNTIME_CAPABILITY,
   TERMINAL_CREATE_IDEMPOTENCY_RUNTIME_CAPABILITY,
   REMOTE_SERVER_UPDATE_CAPABILITY,
