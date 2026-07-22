@@ -13,6 +13,7 @@ import {
 import type { RuntimeStatus } from '../../shared/runtime-types'
 import type { RuntimeRpcResponse } from '../../shared/runtime-rpc-envelope'
 import type { RemoteRuntimeSubscription } from '../../shared/remote-runtime-client'
+import { RemoteRuntimeClientError } from '../../shared/remote-runtime-client-error'
 import type { Store } from '../persistence'
 import { clearActiveRuntimeEnvironmentFocusIfMatches } from '../runtime-environment-focus-self-heal'
 import { closeRemoteRuntimeRequestConnection } from './runtime-environment-request-connections'
@@ -45,7 +46,25 @@ type RetainedRemoteRuntimeSubscription = RemoteRuntimeSubscription & {
   ownerWebContentsId: number
   removeDestroyedListener: () => void
 }
+type RuntimeEnvironmentSubscriptionStartResult =
+  | { ok: true; subscriptionId: string; requestId: string }
+  | {
+      ok: false
+      error: { code: string; message: string }
+    }
+
 const remoteRuntimeSubscriptions = new Map<string, RetainedRemoteRuntimeSubscription>()
+
+function serializeRuntimeEnvironmentSubscriptionError(error: unknown): {
+  code: string
+  message: string
+} {
+  return {
+    code: error instanceof RemoteRuntimeClientError ? error.code : 'runtime_error',
+    message: error instanceof Error ? error.message : String(error)
+  }
+}
+
 const getUserDataPath = (): string => app.getPath('userData')
 
 function closeSubscriptionsForEnvironment(environmentId: string): void {
@@ -167,51 +186,54 @@ export function registerRuntimeEnvironmentHandlers(store: Store): void {
         subscriptionId?: string
         expectedEnvironmentPairingRevision?: number
       }
-    ): Promise<{ subscriptionId: string; requestId: string }> => {
+    ): Promise<RuntimeEnvironmentSubscriptionStartResult> => {
       const subscriptionId =
         typeof args.subscriptionId === 'string' && args.subscriptionId.length > 0
           ? args.subscriptionId
           : randomUUID()
-      if (remoteRuntimeSubscriptions.has(subscriptionId)) {
-        throw new Error('Runtime environment subscription id already exists')
-      }
-      const environment = resolveEnvironment(getUserDataPath(), args.selector)
-      const pairingRevision = environment.pairingRevision ?? environment.createdAt
-      if (
-        args.expectedEnvironmentPairingRevision !== undefined &&
-        pairingRevision !== args.expectedEnvironmentPairingRevision
-      ) {
-        throw new Error('Runtime environment pairing changed; refresh and try again')
-      }
-      const transportGeneration = getRuntimeEnvironmentTransportGeneration(environment.id)
-      const transportIsCurrent = (): boolean =>
-        getRuntimeEnvironmentTransportGeneration(environment.id) === transportGeneration
-      const sender = event.sender
-      const ownerWebContentsId = sender.id
-      let senderDestroyed = sender.isDestroyed()
       let subscription: RemoteRuntimeSubscription | null = null
-      let destroyedListenerAttached = false
-      const removeDestroyedListener = (): void => {
-        if (!destroyedListenerAttached) {
-          return
-        }
-        destroyedListenerAttached = false
-        sender.removeListener('destroyed', closeSubscription)
-      }
-      const closeSubscription = (): void => {
-        senderDestroyed = true
-        const retained = remoteRuntimeSubscriptions.get(subscriptionId) ?? null
-        remoteRuntimeSubscriptions.delete(subscriptionId)
-        if (retained) {
-          retained.close()
-          return
-        }
-        removeDestroyedListener()
-        subscription?.close()
-      }
-      sender.once('destroyed', closeSubscription)
-      destroyedListenerAttached = true
+      let removeDestroyedListener = (): void => {}
       try {
+        if (remoteRuntimeSubscriptions.has(subscriptionId)) {
+          throw new Error('Runtime environment subscription id already exists')
+        }
+        const environment = resolveEnvironment(getUserDataPath(), args.selector)
+        const pairingRevision = environment.pairingRevision ?? environment.createdAt
+        if (
+          args.expectedEnvironmentPairingRevision !== undefined &&
+          pairingRevision !== args.expectedEnvironmentPairingRevision
+        ) {
+          throw new Error('Runtime environment pairing changed; refresh and try again')
+        }
+        const transportGeneration = getRuntimeEnvironmentTransportGeneration(environment.id)
+        const transportIsCurrent = (): boolean =>
+          getRuntimeEnvironmentTransportGeneration(environment.id) === transportGeneration
+        const sender = event.sender
+        const ownerWebContentsId = sender.id
+        let senderDestroyed = sender.isDestroyed()
+        // Why: a close can beat the async handle continuation; tombstone so late handle is release-only.
+        let subscriptionClosed = false
+        let destroyedListenerAttached = false
+        const closeSubscription = (): void => {
+          senderDestroyed = true
+          const retained = remoteRuntimeSubscriptions.get(subscriptionId) ?? null
+          remoteRuntimeSubscriptions.delete(subscriptionId)
+          if (retained) {
+            retained.close()
+            return
+          }
+          removeDestroyedListener()
+          subscription?.close()
+        }
+        removeDestroyedListener = (): void => {
+          if (!destroyedListenerAttached) {
+            return
+          }
+          destroyedListenerAttached = false
+          sender.removeListener('destroyed', closeSubscription)
+        }
+        sender.once('destroyed', closeSubscription)
+        destroyedListenerAttached = true
         subscription = await subscribeRuntimeEnvironment(
           getUserDataPath(),
           environment.id,
@@ -228,46 +250,50 @@ export function registerRuntimeEnvironmentHandlers(store: Store): void {
               }
             },
             onClose: () => {
-              const retained = remoteRuntimeSubscriptions.get(subscriptionId) ?? null
-              retained?.removeDestroyedListener()
+              subscriptionClosed = true
+              removeDestroyedListener()
               remoteRuntimeSubscriptions.delete(subscriptionId)
             }
           }
         )
+        let pairingIsCurrent = false
+        try {
+          const currentEnvironment = resolveEnvironment(getUserDataPath(), environment.id)
+          pairingIsCurrent =
+            (currentEnvironment.pairingRevision ?? currentEnvironment.createdAt) === pairingRevision
+        } catch {
+          pairingIsCurrent = false
+        }
+        if (!transportIsCurrent() || !pairingIsCurrent) {
+          removeDestroyedListener()
+          subscription.close()
+          throw new Error('Runtime environment pairing changed; refresh and try again')
+        }
+        if (subscriptionClosed || senderDestroyed || sender.isDestroyed()) {
+          removeDestroyedListener()
+          subscription.close()
+          return { ok: true, subscriptionId, requestId: subscription.requestId }
+        }
+        remoteRuntimeSubscriptions.set(subscriptionId, {
+          requestId: subscription.requestId,
+          environmentId: environment.id,
+          ownerWebContentsId,
+          removeDestroyedListener,
+          sendBinary: (bytes) => subscription?.sendBinary(bytes) ?? false,
+          close: () => {
+            removeDestroyedListener()
+            subscription?.close()
+          }
+        })
+        return { ok: true, subscriptionId, requestId: subscription.requestId }
       } catch (error) {
         removeDestroyedListener()
-        throw error
-      }
-      let pairingIsCurrent = false
-      try {
-        const currentEnvironment = resolveEnvironment(getUserDataPath(), environment.id)
-        pairingIsCurrent =
-          (currentEnvironment.pairingRevision ?? currentEnvironment.createdAt) === pairingRevision
-      } catch {
-        pairingIsCurrent = false
-      }
-      if (!transportIsCurrent() || !pairingIsCurrent) {
-        removeDestroyedListener()
-        subscription.close()
-        throw new Error('Runtime environment pairing changed; refresh and try again')
-      }
-      if (senderDestroyed || sender.isDestroyed()) {
-        removeDestroyedListener()
-        subscription.close()
-        return { subscriptionId, requestId: subscription.requestId }
-      }
-      remoteRuntimeSubscriptions.set(subscriptionId, {
-        requestId: subscription.requestId,
-        environmentId: environment.id,
-        ownerWebContentsId,
-        removeDestroyedListener,
-        sendBinary: (bytes) => subscription?.sendBinary(bytes) ?? false,
-        close: () => {
-          removeDestroyedListener()
-          subscription?.close()
+        subscription?.close()
+        return {
+          ok: false,
+          error: serializeRuntimeEnvironmentSubscriptionError(error)
         }
-      })
-      return { subscriptionId, requestId: subscription.requestId }
+      }
     }
   )
   ipcMain.handle(
