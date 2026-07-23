@@ -1028,6 +1028,7 @@ export default function SessionScreen() {
     handleLiveInputAccessoryBytes,
     handleLiveInputChange,
     handleLiveInputKeyPress,
+    handleLiveInputSelectionChange,
     handleLiveInputSubmit
   } = useTerminalLiveInputCommit({
     activeHandle,
@@ -4977,6 +4978,7 @@ export default function SessionScreen() {
                       value={liveInputCapture}
                       onChangeText={handleLiveInputChange}
                       onKeyPress={handleLiveInputKeyPress}
+                      onSelectionChange={handleLiveInputSelectionChange}
                       onSubmitEditing={handleLiveInputSubmit}
                       placeholder=""
                       showSoftInputOnFocus
