@@ -265,9 +265,16 @@ export function registerRuntimeEnvironmentHandlers(store: Store): void {
           pairingIsCurrent = false
         }
         if (!transportIsCurrent() || !pairingIsCurrent) {
+          // Why: return ok-union data (not throw) so contextBridge can clone the
+          // failure; close here once before returning to avoid catch double-close.
           removeDestroyedListener()
           subscription.close()
-          throw new Error('Runtime environment pairing changed; refresh and try again')
+          return {
+            ok: false,
+            error: serializeRuntimeEnvironmentSubscriptionError(
+              new Error('Runtime environment pairing changed; refresh and try again')
+            )
+          }
         }
         if (subscriptionClosed || senderDestroyed || sender.isDestroyed()) {
           removeDestroyedListener()

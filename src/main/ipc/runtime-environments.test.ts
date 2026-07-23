@@ -1821,7 +1821,8 @@ describe('registerRuntimeEnvironmentHandlers', () => {
           subscriptionId: string
           expectedEnvironmentPairingRevision?: number
         },
-        { subscriptionId: string; requestId: string }
+        | { ok: true; subscriptionId: string; requestId: string }
+        | { ok: false; error: { code: string; message: string } }
       >('runtimeEnvironments:subscribe')
       const resultPromise = subscribe(
         {
@@ -1854,9 +1855,15 @@ describe('registerRuntimeEnvironmentHandlers', () => {
       expect(senderSend).not.toHaveBeenCalled()
       resolveSubscribe({ requestId: 'retired-stream', close, sendBinary })
 
-      await expect(resultPromise).rejects.toThrow(
-        'Runtime environment pairing changed; refresh and try again'
-      )
+      // Why: dedicated subscribe start failures must stay serializable across
+      // contextBridge as ok-union data rather than thrown Error objects.
+      await expect(resultPromise).resolves.toEqual({
+        ok: false,
+        error: {
+          code: 'runtime_error',
+          message: 'Runtime environment pairing changed; refresh and try again'
+        }
+      })
       expect(close).toHaveBeenCalledTimes(1)
 
       const binaryListener = onMock.mock.calls.find(
