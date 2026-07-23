@@ -137,7 +137,9 @@ describe('session tab RPC methods', () => {
     expect(runtime.refuseUnattributedMobileSessionTabClose).not.toHaveBeenCalled()
   })
 
-  it('preserves reasonless explicit closes from authenticated legacy runtime clients', async () => {
+  it('soft-denies reasonless closes from authenticated runtime clients without closeIntent', async () => {
+    // Why: #8888 requires explicit closeIntent for runtime/shared-control clients;
+    // mobile/legacy clients still keep reasonless user-close compatibility.
     const runtime = {
       getRuntimeId: () => 'test-runtime',
       refuseUnattributedMobileSessionTabClose: vi.fn(),
@@ -153,9 +155,11 @@ describe('session tab RPC methods', () => {
     )
 
     expect(replies).toHaveLength(1)
-    expect(runtime.closeMobileSessionTab).toHaveBeenCalledWith('id:wt-1', 'tab-1', {
-      reason: 'user'
+    expect(JSON.parse(replies[0]!)).toMatchObject({
+      ok: true,
+      result: { closed: false, blockedReason: 'close_intent_required' }
     })
+    expect(runtime.closeMobileSessionTab).not.toHaveBeenCalled()
     expect(runtime.refuseUnattributedMobileSessionTabClose).not.toHaveBeenCalled()
   })
 
