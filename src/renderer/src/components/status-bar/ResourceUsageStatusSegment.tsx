@@ -753,8 +753,7 @@ export function ResourceUsageStatusSegment({
     sessionsError,
     refreshSessions,
     clearSessionsError,
-    removeSession,
-    removeSessions
+    removeSession
   } = useResourceSessionInventory(workspaceSessionReady)
   const sessions = sessionInventory.sessions
   const [killConfirm, setKillConfirm] = useState<UnifiedSessionRow | null>(null)
@@ -793,12 +792,11 @@ export function ResourceUsageStatusSegment({
   const popoverBodyRef = useRef<HTMLDivElement | null>(null)
   const popoverBodyFocusFrameRef = useRef<number | null>(null)
   const mountedRef = useMountedRef()
-  const handleCleanupSessionsLoaded = useCallback((nextSessions: DaemonSession[]): void => {
-    setSessions(nextSessions)
-    setSessionsError(false)
-  }, [])
+  // Why: cleanup review lists the global daemon set; re-pull inventory so rows match the reviewed snapshot without a parallel sessions useState (d4387b inventory epoch).
   const sessionCleanupReview = useResourceSessionCleanupReview({
-    onSessionsLoaded: handleCleanupSessionsLoaded
+    onSessionsLoaded: () => {
+      void refreshSessions()
+    }
   })
 
   const cancelPopoverBodyFocusFrame = useCallback((): void => {
