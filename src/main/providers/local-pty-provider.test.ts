@@ -222,6 +222,1187 @@ describe('LocalPtyProvider', () => {
       expect(typeof result.id).toBe('string')
     })
 
+    it('opts only recognized native Windows agent PTYs into ConPTY Job Object ownership', async () => {
+      Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' })
+
+      await provider.spawn({ cols: 80, rows: 24, cwd: 'C:\\repo', command: 'claude' })
+      expect(spawnMock.mock.calls.at(-1)?.[2]).toMatchObject({
+        useConptyDll: true,
+        useConptyJobObject: true
+      })
+
+      await provider.spawn({ cols: 80, rows: 24, cwd: 'C:\\repo' })
+      expect(spawnMock.mock.calls.at(-1)?.[2]).not.toHaveProperty('useConptyJobObject')
+    })
+
+    it('does not apply the native Windows Job Object option to WSL agent PTYs', async () => {
+      Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' })
+
+      await provider.spawn({
+        cols: 80,
+        rows: 24,
+        cwd: 'C:\\repo',
+        command: 'codex',
+        shellOverride: 'wsl.exe'
+      })
+
+      expect(spawnMock.mock.calls.at(-1)?.[2]).not.toHaveProperty('useConptyJobObject')
+
+      await provider.spawn({
+        cols: 80,
+        rows: 24,
+        cwd: 'C:\\repo',
+        command: 'codex',
+        shellOverride: 'wsl'
+      })
+      expect(spawnMock.mock.calls.at(-1)?.[2]).not.toHaveProperty('useConptyJobObject')
+    })
+
+    it('reattaches to an existing caller-supplied session id without spawning', async () => {
+      const first = await provider.spawn({ cols: 80, rows: 24, sessionId: 'serve-session-1' })
+      spawnMock.mockClear()
+
+      const second = await provider.spawn({ cols: 120, rows: 40, sessionId: first.id })
+
+      expect(second).toEqual({
+        id: 'serve-session-1',
+        pid: 12345,
+        isReattach: true
+      })
+      expect(mockProc.resize).toHaveBeenCalledWith(120, 40)
+      expect(spawnMock).not.toHaveBeenCalled()
+    })
+
+    it('keeps a native UNC session native on a conflicting WSL reattach', async () => {
+      Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' })
+      const first = await provider.spawn({
+        cols: 80,
+        rows: 24,
+        sessionId: 'native-session',
+        cwd: '\\\\server\\share\\repo',
+        shellOverride: 'powershell.exe'
+      })
+      spawnMock.mockClear()
+
+      const second = await provider.spawn({
+        cols: 120,
+        rows: 40,
+        sessionId: first.id,
+        shellOverride: 'wsl.exe',
+        terminalWindowsWslDistro: 'Ubuntu'
+      })
+
+      expect(first.wslDistro).toBeNull()
+      expect(second.wslDistro).toBeNull()
+      expect(spawnMock).not.toHaveBeenCalled()
+    })
+
+    it('keeps the first WSL distro on a conflicting distro reattach', async () => {
+      Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' })
+      const first = await provider.spawn({
+        cols: 80,
+        rows: 24,
+        sessionId: 'wsl-session',
+        cwd: '\\\\wsl.localhost\\Ubuntu\\home\\jin\\repo'
+      })
+      spawnMock.mockClear()
+
+      const second = await provider.spawn({
+        cols: 120,
+        rows: 40,
+        sessionId: first.id,
+        shellOverride: 'wsl.exe',
+        terminalWindowsWslDistro: 'Debian'
+      })
+
+      expect(first.wslDistro).toBe('Ubuntu')
+      expect(second.wslDistro).toBe('Ubuntu')
+      expect(spawnMock).not.toHaveBeenCalled()
+    })
+
+    it('does not reattach numeric caller session ids that can collide after restart', async () => {
+      const first = await provider.spawn({ cols: 80, rows: 24 })
+      spawnMock.mockClear()
+
+      const second = await provider.spawn({ cols: 120, rows: 40, sessionId: first.id })
+
+      expect(second.id).not.toBe(first.id)
+      expect(second.isReattach).toBeUndefined()
+      expect(spawnMock).toHaveBeenCalledOnce()
+    })
+
+    it('does not spawn after shutdown cancels a pending stable session id', async () => {
+      let finishPreparation!: () => void
+      spawnMock.mockClear()
+      prepareMacosTccLoginShellMock.mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            finishPreparation = resolve
+          })
+      )
+
+      const spawn = provider.spawn({
+        cols: 80,
+        rows: 24,
+        sessionId: 'pending-local-session'
+      })
+      const canceledSpawn = expect(spawn).rejects.toThrow(
+        'PTY spawn canceled: pending-local-session'
+      )
+      await vi.waitFor(() => expect(prepareMacosTccLoginShellMock).toHaveBeenCalledOnce())
+
+      await provider.shutdown('pending-local-session', { immediate: true })
+      finishPreparation()
+      await canceledSpawn
+      expect(spawnMock).not.toHaveBeenCalled()
+
+      await expect(
+        provider.spawn({ cols: 80, rows: 24, sessionId: 'pending-local-session' })
+      ).resolves.toMatchObject({ id: 'pending-local-session' })
+      expect(spawnMock).toHaveBeenCalledOnce()
+    })
+
+    it('coalesces a concurrent same-session-id spawn before launching a redundant shell (F3)', async () => {
+      spawnMock.mockClear()
+      const procA = { ...mockProc, pid: 1001 }
+      spawnMock.mockReturnValueOnce(procA)
+
+      // Hold both spawns past the existence check and inside the preflight so they
+      // race to register the same id; release only after both are parked.
+      let releasePreflight!: () => void
+      prepareMacosTccLoginShellMock.mockReturnValue(
+        new Promise<void>((resolve) => {
+          releasePreflight = resolve
+        })
+      )
+
+      const spawnA = provider.spawn({ cols: 80, rows: 24, sessionId: 'race-session' })
+      const spawnB = provider.spawn({ cols: 132, rows: 44, sessionId: 'race-session' })
+      await vi.waitFor(() => expect(prepareMacosTccLoginShellMock).toHaveBeenCalledTimes(2))
+      releasePreflight()
+
+      const [a, b] = await Promise.all([spawnA, spawnB])
+      // The winner owns the tracked PTY; the loser attaches to it, not a second one.
+      expect(a.isReattach).toBeUndefined()
+      expect(b.isReattach).toBe(true)
+      expect(b.pid).toBe(procA.pid)
+      expect(provider.getPtyProcess('race-session')).toBe(procA)
+      expect(spawnMock).toHaveBeenCalledOnce()
+      expect(procA.resize).toHaveBeenCalledWith(132, 44)
+    })
+
+    it('calls node-pty spawn with correct args', async () => {
+      await provider.spawn({ cols: 120, rows: 40, cwd: '/tmp' })
+      expect(spawnMock).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.any(Array),
+        expect.objectContaining({
+          cols: 120,
+          rows: 40,
+          cwd: '/tmp'
+        })
+      )
+    })
+
+    it('throws when cwd does not exist', async () => {
+      existsSyncMock.mockImplementation((p: string) => p !== '/nonexistent')
+      await expect(provider.spawn({ cols: 80, rows: 24, cwd: '/nonexistent' })).rejects.toThrow(
+        'does not exist'
+      )
+    })
+
+    it('allows an explicitly requested plain shell at POSIX root', async () => {
+      await provider.spawn({ cols: 80, rows: 24, cwd: '/' })
+
+      expect(spawnMock).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.any(Array),
+        expect.objectContaining({ cwd: '/' })
+      )
+    })
+
+    it('falls back to the safe default cwd for automatic agent startup without an explicit cwd', async () => {
+      spawnMock.mockClear()
+      const origHome = process.env.HOME
+      // Pin HOME so we assert the exact resolved candidate, not just non-root-ness —
+      // catches regressions where resolveSafePtyDefaultCwd picks an unintended home.
+      process.env.HOME = '/home/testuser'
+
+      try {
+        // Why: an omitted cwd resolves to a guaranteed-safe default home (the
+        // guard only rejects root-like paths), so the agent must still launch.
+        await expect(
+          provider.spawn({ cols: 80, rows: 24, command: 'codex' })
+        ).resolves.toBeDefined()
+
+        const spawnCall = spawnMock.mock.calls.at(-1)!
+        expect(spawnCall[2].cwd).toBe('/home/testuser')
+        expect(isRootLikePath(spawnCall[2].cwd)).toBe(false)
+      } finally {
+        if (origHome === undefined) {
+          delete process.env.HOME
+        } else {
+          process.env.HOME = origHome
+        }
+      }
+    })
+
+    it('rejects automatic agent startup at POSIX root', async () => {
+      spawnMock.mockClear()
+
+      await expect(
+        provider.spawn({ cols: 80, rows: 24, cwd: '/', command: 'claude' })
+      ).rejects.toThrow(/requires a non-root workspace/)
+
+      expect(spawnMock).not.toHaveBeenCalled()
+    })
+
+    it('invokes onSpawned callback', async () => {
+      const onSpawned = vi.fn()
+      provider.configure({ onSpawned })
+      const { id, incarnationId } = await provider.spawn({ cols: 80, rows: 24 })
+      expect(onSpawned).toHaveBeenCalledWith(id, incarnationId)
+    })
+
+    it('reports physical commit before post-spawn publication can fail', async () => {
+      spawnMock.mockClear()
+      const committed = vi.fn()
+      provider.configure({
+        onSpawned: () => {
+          throw new Error('post-spawn publication failed')
+        }
+      })
+
+      await expect(
+        provider.spawn({ cols: 80, rows: 24, onPtySpawnCommitted: committed })
+      ).rejects.toThrow('post-spawn publication failed')
+      expect(spawnMock).toHaveBeenCalledOnce()
+      expect(committed).toHaveBeenCalledOnce()
+    })
+
+    it('invokes buildSpawnEnv callback to customize environment', async () => {
+      const buildSpawnEnv = vi.fn((_id: string, env: Record<string, string>) => {
+        env.CUSTOM_VAR = 'custom-value'
+        return env
+      })
+      provider.configure({ buildSpawnEnv })
+      await provider.spawn({ cols: 80, rows: 24 })
+
+      const spawnCall = spawnMock.mock.calls.at(-1)!
+      expect(spawnCall[2].env.CUSTOM_VAR).toBe('custom-value')
+    })
+
+    it('does not inherit NODE_ENV from the Orca process env', async () => {
+      // Why: NODE_ENV in Orca's process is Orca's build mode (electron-vite sets
+      // `development` in dev runs); leaking it breaks `next build` and Vitest.
+      const previous = process.env.NODE_ENV
+      process.env.NODE_ENV = 'development'
+      try {
+        await provider.spawn({ cols: 80, rows: 24 })
+      } finally {
+        if (previous === undefined) {
+          delete process.env.NODE_ENV
+        } else {
+          process.env.NODE_ENV = previous
+        }
+      }
+
+      const spawnCall = spawnMock.mock.calls.at(-1)!
+      expect(spawnCall[2].env.NODE_ENV).toBeUndefined()
+      expect(spawnCall[2].env.PATH).toBe(process.env.PATH)
+    })
+
+    it('keeps an explicitly requested NODE_ENV for spawned terminals', async () => {
+      // Why: only the ambient value is stripped; a caller-supplied NODE_ENV still wins.
+      const previous = process.env.NODE_ENV
+      process.env.NODE_ENV = 'development'
+      try {
+        await provider.spawn({ cols: 80, rows: 24, env: { NODE_ENV: 'production' } })
+      } finally {
+        if (previous === undefined) {
+          delete process.env.NODE_ENV
+        } else {
+          process.env.NODE_ENV = previous
+        }
+      }
+
+      const spawnCall = spawnMock.mock.calls.at(-1)!
+      expect(spawnCall[2].env.NODE_ENV).toBe('production')
+    })
+
+    it('suppresses the first-run Powerlevel10k wizard for spawned terminals', async () => {
+      await provider.spawn({ cols: 80, rows: 24 })
+
+      const spawnCall = spawnMock.mock.calls.at(-1)!
+      expect(spawnCall[2].env.POWERLEVEL9K_DISABLE_CONFIGURATION_WIZARD).toBe('true')
+    })
+
+    it('preserves an explicit Powerlevel10k wizard env value', async () => {
+      await provider.spawn({
+        cols: 80,
+        rows: 24,
+        env: { POWERLEVEL9K_DISABLE_CONFIGURATION_WIZARD: 'already-set' }
+      })
+
+      const spawnCall = spawnMock.mock.calls.at(-1)!
+      expect(spawnCall[2].env.POWERLEVEL9K_DISABLE_CONFIGURATION_WIZARD).toBe('already-set')
+    })
+
+    it('honors requests to delete the Powerlevel10k wizard env value', async () => {
+      await provider.spawn({
+        cols: 80,
+        rows: 24,
+        envToDelete: ['POWERLEVEL9K_DISABLE_CONFIGURATION_WIZARD']
+      })
+
+      const spawnCall = spawnMock.mock.calls.at(-1)!
+      expect(spawnCall[2].env.POWERLEVEL9K_DISABLE_CONFIGURATION_WIZARD).toBeUndefined()
+    })
+
+    it('uses fallback shell readiness when startup-command shell spawn falls back', async () => {
+      vi.useFakeTimers()
+      try {
+        process.env.SHELL = '/usr/bin/fish'
+        spawnMock.mockImplementationOnce(() => {
+          throw new Error('fish failed')
+        })
+        spawnMock.mockReturnValue(mockProc)
+
+        await provider.spawn({ cols: 80, rows: 24, command: "printf 'linked issue context'" })
+
+        expect(spawnMock.mock.calls[0]?.[0]).toBe('/bin/zsh')
+        await Promise.resolve()
+        vi.advanceTimersByTime(50)
+        await Promise.resolve()
+        expect(mockProc.write).not.toHaveBeenCalled()
+
+        const dataCallback = mockProc.onData.mock.calls[0]?.[0] as (data: string) => void
+        dataCallback('\x1b]777;orca-shell-ready\x07user@host % ')
+        await Promise.resolve()
+        vi.advanceTimersByTime(29)
+        await Promise.resolve()
+        expect(mockProc.write).not.toHaveBeenCalled()
+
+        vi.advanceTimersByTime(1)
+        await Promise.resolve()
+        expect(mockProc.write).toHaveBeenCalledWith("printf 'linked issue context'\n")
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('releases held marker-prefix bytes when local shell readiness times out', async () => {
+      vi.useFakeTimers()
+      const onData = vi.fn()
+      provider.configure({ onData })
+      try {
+        await provider.spawn({ cols: 80, rows: 24, command: 'printf ready' })
+        const dataCallback = mockProc.onData.mock.calls[0]?.[0] as (data: string) => void
+
+        dataCallback('\x1b]777;orca-shell-ready')
+        expect(onData).not.toHaveBeenCalled()
+
+        vi.advanceTimersByTime(1500)
+        await Promise.resolve()
+
+        expect(onData).toHaveBeenCalledWith(
+          expect.any(String),
+          '\x1b]777;orca-shell-ready',
+          expect.any(Number)
+        )
+        expect(mockProc.write).not.toHaveBeenCalled()
+
+        vi.advanceTimersByTime(200)
+        await Promise.resolve()
+        expect(mockProc.write).toHaveBeenCalledWith('printf ready\n')
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('releases held marker-prefix bytes when local shell exits before readiness', async () => {
+      const onData = vi.fn()
+      provider.configure({ onData })
+
+      await provider.spawn({ cols: 80, rows: 24, command: 'printf ready' })
+      const dataCallback = mockProc.onData.mock.calls[0]?.[0] as (data: string) => void
+
+      dataCallback('\x1b]777;orca-shell-ready')
+      expect(onData).not.toHaveBeenCalled()
+
+      exitCb?.({ exitCode: 0 })
+
+      expect(onData).toHaveBeenCalledWith(
+        expect.any(String),
+        '\x1b]777;orca-shell-ready',
+        expect.any(Number)
+      )
+    })
+
+    it('honors explicit terminal env overrides after deleting requested defaults', async () => {
+      provider.configure({
+        buildSpawnEnv: (_id, env) => {
+          env.TERM_PROGRAM = 'Orca'
+          env.ORCA_ATTRIBUTION_SHIM_DIR = '/tmp/orca-attribution'
+          env.PATH = `/tmp/orca-attribution:${env.PATH ?? ''}`
+          return env
+        }
+      })
+
+      await provider.spawn({
+        cols: 80,
+        rows: 24,
+        env: {
+          TERM: 'screen-256color',
+          PATH: '/tmp/orca-agent-teams-bin:/usr/bin',
+          ORCA_AGENT_TEAMS_TEAM_ID: 'team-test'
+        },
+        envToDelete: ['TERM_PROGRAM', 'ORCA_ATTRIBUTION_SHIM_DIR']
+      })
+
+      const spawnCall = spawnMock.mock.calls.at(-1)!
+      expect(spawnCall[2].name).toBe('screen-256color')
+      expect(spawnCall[2].env.TERM).toBe('screen-256color')
+      expect(spawnCall[2].env.PATH.split(':')[0]).toBe('/tmp/orca-agent-teams-bin')
+      expect(spawnCall[2].env.TERM_PROGRAM).toBeUndefined()
+      expect(spawnCall[2].env.ORCA_ATTRIBUTION_SHIM_DIR).toBeUndefined()
+    })
+
+    it('drops stale inherited Git config indices behind a smaller explicit count', async () => {
+      const keys = [
+        'GIT_CONFIG_COUNT',
+        'GIT_CONFIG_KEY_0',
+        'GIT_CONFIG_VALUE_0',
+        'GIT_CONFIG_KEY_1',
+        'GIT_CONFIG_VALUE_1'
+      ] as const
+      const saved = Object.fromEntries(keys.map((key) => [key, process.env[key]]))
+      process.env.GIT_CONFIG_COUNT = '2'
+      process.env.GIT_CONFIG_KEY_0 = 'base.zero'
+      process.env.GIT_CONFIG_VALUE_0 = 'zero'
+      process.env.GIT_CONFIG_KEY_1 = 'base.one'
+      process.env.GIT_CONFIG_VALUE_1 = 'one'
+
+      try {
+        await provider.spawn({
+          cols: 80,
+          rows: 24,
+          env: {
+            GIT_CONFIG_COUNT: '1',
+            GIT_CONFIG_KEY_0: 'override.zero',
+            GIT_CONFIG_VALUE_0: 'override'
+          }
+        })
+
+        const spawnEnv = spawnMock.mock.calls.at(-1)?.[2]?.env as Record<string, string>
+        expect(spawnEnv.GIT_CONFIG_COUNT).toBe('1')
+        expect(spawnEnv.GIT_CONFIG_KEY_0).toBe('override.zero')
+        expect(spawnEnv.GIT_CONFIG_KEY_1).toBeUndefined()
+        expect(spawnEnv.GIT_CONFIG_VALUE_1).toBeUndefined()
+      } finally {
+        for (const key of keys) {
+          if (saved[key] === undefined) {
+            delete process.env[key]
+          } else {
+            process.env[key] = saved[key]
+          }
+        }
+      }
+    })
+
+    it('does not inherit AppImage runtime env into Linux PTY shells', async () => {
+      const saved = {
+        APPIMAGE: process.env.APPIMAGE,
+        APPDIR: process.env.APPDIR,
+        ARGV0: process.env.ARGV0,
+        OWD: process.env.OWD,
+        APPIMAGE_LIBRARY_PATH: process.env.APPIMAGE_LIBRARY_PATH,
+        PATH: process.env.PATH,
+        LD_LIBRARY_PATH: process.env.LD_LIBRARY_PATH
+      }
+      process.env.APPIMAGE = '/data/apps/orca.appimage'
+      process.env.APPDIR = '/tmp/.mount_orca123'
+      process.env.ARGV0 = '/data/apps/orca.appimage'
+      process.env.OWD = '/home/user/project'
+      process.env.APPIMAGE_LIBRARY_PATH = '/tmp/.mount_orca123/usr/lib'
+      process.env.PATH = ['/tmp/.mount_orca123', '/tmp/.mount_orca123/usr/sbin', '/usr/bin'].join(
+        delimiter
+      )
+      process.env.LD_LIBRARY_PATH = ['/tmp/.mount_orca123/usr/lib', '/opt/audio/lib'].join(
+        delimiter
+      )
+
+      try {
+        await provider.spawn({ cols: 80, rows: 24 })
+      } finally {
+        for (const [key, value] of Object.entries(saved)) {
+          if (value === undefined) {
+            delete process.env[key]
+          } else {
+            process.env[key] = value
+          }
+        }
+      }
+
+      const env = spawnMock.mock.calls.at(-1)?.[2].env
+      expect(env.APPIMAGE).toBeUndefined()
+      expect(env.APPDIR).toBeUndefined()
+      expect(env.ARGV0).toBeUndefined()
+      expect(env.OWD).toBeUndefined()
+      expect(env.APPIMAGE_LIBRARY_PATH).toBeUndefined()
+      expect(env.PATH).toBe('/usr/bin')
+      expect(env.LD_LIBRARY_PATH).toBe('/opt/audio/lib')
+    })
+
+    it('uses shell wrapper when MiMo home must survive shell startup', async () => {
+      provider.configure({
+        buildSpawnEnv: (_id, env) => {
+          env.MIMOCODE_HOME = '/tmp/orca-mimocode-overlay'
+          env.ORCA_MIMOCODE_HOME = '/tmp/orca-mimocode-overlay'
+          return env
+        }
+      })
+
+      await provider.spawn({ cols: 80, rows: 24 })
+
+      const spawnCall = spawnMock.mock.calls.at(-1)!
+      expect(spawnCall[1]).toEqual(['-l'])
+      expect(spawnCall[2].env.ZDOTDIR).toMatch(/shell-ready[\\/]zsh/)
+      expect(spawnCall[2].env.ORCA_SHELL_READY_MARKER).toBe('0')
+    })
+
+    it('does not pass a Windows Codex home into WSL terminals', async () => {
+      Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' })
+      provider.configure({
+        buildSpawnEnv: (_id, env) => {
+          env.CODEX_HOME = 'C:\\Users\\jin\\.codex'
+          env.ORCA_CODEX_HOME = 'C:\\Users\\jin\\.codex'
+          return env
+        }
+      })
+
+      await provider.spawn({
+        cols: 80,
+        rows: 24,
+        cwd: '\\\\wsl.localhost\\Ubuntu\\home\\jin\\repo'
+      })
+
+      const spawnCall = spawnMock.mock.calls.at(-1)!
+      expect(spawnCall[0]).toBe('wsl.exe')
+      expect(spawnCall[2].env.CODEX_HOME).toBeUndefined()
+      expect(spawnCall[2].env.ORCA_CODEX_HOME).toBeUndefined()
+    })
+
+    it('does not pass a WSL managed Codex home into Windows terminals', async () => {
+      Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' })
+      provider.configure({
+        buildSpawnEnv: (_id, env) => {
+          env.CODEX_HOME =
+            '\\\\wsl.localhost\\Ubuntu\\home\\jin\\.local\\share\\orca\\codex-accounts\\a\\home'
+          env.ORCA_CODEX_HOME =
+            '\\\\wsl.localhost\\Ubuntu\\home\\jin\\.local\\share\\orca\\codex-accounts\\a\\home'
+          return env
+        }
+      })
+
+      await provider.spawn({
+        cols: 80,
+        rows: 24,
+        cwd: 'C:\\Users\\jin\\repo'
+      })
+
+      const spawnCall = spawnMock.mock.calls.at(-1)!
+      expect(spawnCall[2].env.CODEX_HOME).toBeUndefined()
+      expect(spawnCall[2].env.ORCA_CODEX_HOME).toBeUndefined()
+    })
+
+    it('preserves an explicit Linux Codex home for WSL terminals', async () => {
+      Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' })
+      provider.configure({
+        buildSpawnEnv: (_id, env) => {
+          env.CODEX_HOME = '/home/jin/.codex-alt'
+          return env
+        }
+      })
+
+      await provider.spawn({
+        cols: 80,
+        rows: 24,
+        cwd: '\\\\wsl.localhost\\Ubuntu\\home\\jin\\repo'
+      })
+
+      const spawnCall = spawnMock.mock.calls.at(-1)!
+      expect(spawnCall[0]).toBe('wsl.exe')
+      expect(spawnCall[2].env.CODEX_HOME).toBe('/home/jin/.codex-alt')
+      expect(spawnCall[2].env.WSLENV).toContain('CODEX_HOME')
+    })
+
+    it('translates a WSL managed Codex home before launching a WSL terminal', async () => {
+      Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' })
+      provider.configure({
+        buildSpawnEnv: (_id, env) => {
+          env.CODEX_HOME =
+            '\\\\wsl.localhost\\Ubuntu\\home\\jin\\.local\\share\\orca\\codex-accounts\\a\\home'
+          env.ORCA_CODEX_HOME =
+            '\\\\wsl.localhost\\Ubuntu\\home\\jin\\.local\\share\\orca\\codex-accounts\\a\\home'
+          return env
+        }
+      })
+
+      await provider.spawn({
+        cols: 80,
+        rows: 24,
+        cwd: '\\\\wsl.localhost\\Ubuntu\\home\\jin\\repo'
+      })
+
+      const spawnCall = spawnMock.mock.calls.at(-1)!
+      expect(spawnCall[0]).toBe('wsl.exe')
+      expect(spawnCall[2].env.CODEX_HOME).toBe('/home/jin/.local/share/orca/codex-accounts/a/home')
+      expect(spawnCall[2].env.ORCA_CODEX_HOME).toBe(
+        '/home/jin/.local/share/orca/codex-accounts/a/home'
+      )
+      expect(spawnCall[2].env.WSLENV).toContain('CODEX_HOME')
+      expect(spawnCall[2].env.WSLENV).toContain('ORCA_CODEX_HOME')
+    })
+
+    it('does not pass a WSL managed Codex home into a different WSL distro', async () => {
+      Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' })
+      provider.configure({
+        buildSpawnEnv: (_id, env) => {
+          env.CODEX_HOME =
+            '\\\\wsl.localhost\\Ubuntu\\home\\jin\\.local\\share\\orca\\codex-accounts\\a\\home'
+          env.ORCA_CODEX_HOME =
+            '\\\\wsl.localhost\\Ubuntu\\home\\jin\\.local\\share\\orca\\codex-accounts\\a\\home'
+          return env
+        }
+      })
+
+      await provider.spawn({
+        cols: 80,
+        rows: 24,
+        cwd: '\\\\wsl.localhost\\Debian\\home\\jin\\repo'
+      })
+
+      const spawnCall = spawnMock.mock.calls.at(-1)!
+      expect(spawnCall[0]).toBe('wsl.exe')
+      expect(spawnCall[2].env.CODEX_HOME).toBeUndefined()
+      expect(spawnCall[2].env.ORCA_CODEX_HOME).toBeUndefined()
+    })
+
+    it('uses the preferred WSL distro for Windows cwd WSL terminals', async () => {
+      Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' })
+
+      await provider.spawn({
+        cols: 80,
+        rows: 24,
+        worktreeId: 'repo-1::C:\\Users\\jin\\repo',
+        cwd: 'C:\\Users\\jin\\repo',
+        shellOverride: 'wsl.exe',
+        terminalWindowsWslDistro: 'Debian'
+      })
+
+      const spawnCall = spawnMock.mock.calls.at(-1)!
+      expect(spawnCall[0]).toBe('wsl.exe')
+      expect(spawnCall[1]).toEqual([
+        '-d',
+        'Debian',
+        '--',
+        'sh',
+        '-c',
+        expect.stringContaining("cd '/mnt/c/Users/jin/repo'")
+      ])
+      expect(spawnCall[1][5]).toContain('exec "\\$_orca_wsl_shell" -l')
+      expect(spawnCall[2].env.HISTFILE).toContain('terminal-history-wsl/Debian')
+    })
+
+    it('repro: keeps explicit PowerShell 7 selection when the pwsh probe is cold-false', async () => {
+      Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' })
+      const pwshAvailable = vi.fn(() => false)
+      provider.configure({
+        getWindowsShell: () => 'powershell.exe',
+        getWindowsPowerShellImplementation: () => 'pwsh.exe',
+        pwshAvailable
+      })
+
+      await provider.spawn({
+        cols: 80,
+        rows: 24,
+        cwd: 'C:\\Users\\jin\\repo'
+      })
+
+      const spawnCall = spawnMock.mock.calls.at(-1)!
+      expect(spawnCall[0]).toBe(PWSH7_ABS)
+      expect(spawnCall[1]).toContain('-EncodedCommand')
+      expect(pwshAvailable).not.toHaveBeenCalled()
+    })
+
+    it('marks Orca terminal handle for WSL import when buildSpawnEnv opts in', async () => {
+      Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' })
+      const savedCodexHome = process.env.CODEX_HOME
+      const savedOrcaCodexHome = process.env.ORCA_CODEX_HOME
+      delete process.env.CODEX_HOME
+      delete process.env.ORCA_CODEX_HOME
+      provider.configure({
+        buildSpawnEnv: (_id, env, ctx) => {
+          env.ORCA_TERMINAL_HANDLE = 'term_wsl'
+          if (ctx?.isWsl) {
+            env.WSLENV = 'ORCA_TERMINAL_HANDLE/u'
+          }
+          return env
+        }
+      })
+
+      try {
+        await provider.spawn({
+          cols: 80,
+          rows: 24,
+          cwd: '\\\\wsl.localhost\\Ubuntu\\home\\jin\\repo',
+          env: { ORCA_HERMES_STARTUP_QUERY: 'line one\nline two' }
+        })
+      } finally {
+        if (savedCodexHome === undefined) {
+          delete process.env.CODEX_HOME
+        } else {
+          process.env.CODEX_HOME = savedCodexHome
+        }
+        if (savedOrcaCodexHome === undefined) {
+          delete process.env.ORCA_CODEX_HOME
+        } else {
+          process.env.ORCA_CODEX_HOME = savedOrcaCodexHome
+        }
+      }
+
+      const spawnCall = spawnMock.mock.calls.at(-1)!
+      expect(spawnCall[0]).toBe('wsl.exe')
+      expect(spawnCall[2].env.ORCA_TERMINAL_HANDLE).toBe('term_wsl')
+      expect(spawnCall[2].env.WSLENV?.split(':')).toEqual(
+        expect.arrayContaining([
+          'ORCA_TERMINAL_HANDLE/u',
+          'ORCA_HERMES_STARTUP_QUERY',
+          POWERLEVEL10K_WIZARD_DISABLE_ENV
+        ])
+      )
+    })
+
+    it('does not mark deleted Powerlevel10k wizard env for WSL import', async () => {
+      Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' })
+
+      await provider.spawn({
+        cols: 80,
+        rows: 24,
+        cwd: '\\\\wsl.localhost\\Ubuntu\\home\\jin\\repo',
+        envToDelete: [POWERLEVEL10K_WIZARD_DISABLE_ENV]
+      })
+
+      const spawnCall = spawnMock.mock.calls.at(-1)!
+      expect(spawnCall[0]).toBe('wsl.exe')
+      expect(spawnCall[2].env[POWERLEVEL10K_WIZARD_DISABLE_ENV]).toBeUndefined()
+      expect(spawnCall[2].env.WSLENV ?? '').not.toContain(POWERLEVEL10K_WIZARD_DISABLE_ENV)
+    })
+
+    it('does not inherit parent Orca pane identity when caller omits pane env', async () => {
+      const saved = {
+        ORCA_PANE_KEY: process.env.ORCA_PANE_KEY,
+        ORCA_TAB_ID: process.env.ORCA_TAB_ID,
+        ORCA_WORKTREE_ID: process.env.ORCA_WORKTREE_ID
+      }
+      process.env.ORCA_PANE_KEY = 'parent-tab:parent-leaf'
+      process.env.ORCA_TAB_ID = 'parent-tab'
+      process.env.ORCA_WORKTREE_ID = 'parent-worktree'
+
+      try {
+        await provider.spawn({ cols: 80, rows: 24 })
+      } finally {
+        for (const [key, value] of Object.entries(saved)) {
+          if (value === undefined) {
+            delete process.env[key]
+          } else {
+            process.env[key] = value
+          }
+        }
+      }
+
+      const spawnCall = spawnMock.mock.calls.at(-1)!
+      expect(spawnCall[2].env.ORCA_PANE_KEY).toBeUndefined()
+      expect(spawnCall[2].env.ORCA_TAB_ID).toBeUndefined()
+      expect(spawnCall[2].env.ORCA_WORKTREE_ID).toBeUndefined()
+    })
+
+    it('preserves explicit child Orca pane identity over parent env', async () => {
+      const saved = {
+        ORCA_PANE_KEY: process.env.ORCA_PANE_KEY,
+        ORCA_TAB_ID: process.env.ORCA_TAB_ID,
+        ORCA_WORKTREE_ID: process.env.ORCA_WORKTREE_ID
+      }
+      process.env.ORCA_PANE_KEY = 'parent-tab:parent-leaf'
+      process.env.ORCA_TAB_ID = 'parent-tab'
+      process.env.ORCA_WORKTREE_ID = 'parent-worktree'
+
+      try {
+        await provider.spawn({
+          cols: 80,
+          rows: 24,
+          env: {
+            ORCA_PANE_KEY: 'child-tab:child-leaf',
+            ORCA_TAB_ID: 'child-tab',
+            ORCA_WORKTREE_ID: 'child-worktree'
+          }
+        })
+      } finally {
+        for (const [key, value] of Object.entries(saved)) {
+          if (value === undefined) {
+            delete process.env[key]
+          } else {
+            process.env[key] = value
+          }
+        }
+      }
+
+      const spawnCall = spawnMock.mock.calls.at(-1)!
+      expect(spawnCall[2].env.ORCA_PANE_KEY).toBe('child-tab:child-leaf')
+      expect(spawnCall[2].env.ORCA_TAB_ID).toBe('child-tab')
+      expect(spawnCall[2].env.ORCA_WORKTREE_ID).toBe('child-worktree')
+    })
+
+    it('combines HOMEDRIVE and HOMEPATH for Windows default cwd', async () => {
+      const platform = Object.getOwnPropertyDescriptor(process, 'platform')
+      const originalUserProfile = process.env.USERPROFILE
+      const originalHomeDrive = process.env.HOMEDRIVE
+      const originalHomePath = process.env.HOMEPATH
+
+      Object.defineProperty(process, 'platform', { value: 'win32' })
+      delete process.env.USERPROFILE
+      process.env.HOMEDRIVE = 'D:'
+      process.env.HOMEPATH = '\\Users\\orca'
+
+      try {
+        await provider.spawn({ cols: 80, rows: 24 })
+      } finally {
+        if (platform) {
+          Object.defineProperty(process, 'platform', platform)
+        }
+        if (originalUserProfile === undefined) {
+          delete process.env.USERPROFILE
+        } else {
+          process.env.USERPROFILE = originalUserProfile
+        }
+        if (originalHomeDrive === undefined) {
+          delete process.env.HOMEDRIVE
+        } else {
+          process.env.HOMEDRIVE = originalHomeDrive
+        }
+        if (originalHomePath === undefined) {
+          delete process.env.HOMEPATH
+        } else {
+          process.env.HOMEPATH = originalHomePath
+        }
+      }
+
+      expect(spawnMock).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.any(Array),
+        expect.objectContaining({ cwd: 'D:\\Users\\orca' })
+      )
+    })
+
+    it('launches POSIX cwd split panes through WSL when worktree context is WSL', async () => {
+      const platform = Object.getOwnPropertyDescriptor(process, 'platform')
+      Object.defineProperty(process, 'platform', { value: 'win32' })
+
+      try {
+        await provider.spawn({
+          cols: 80,
+          rows: 24,
+          cwd: '/home/jin/repo/subdir',
+          shellOverride: 'powershell.exe',
+          worktreeId: 'repo::\\\\wsl.localhost\\Ubuntu\\home\\jin\\repo'
+        })
+      } finally {
+        if (platform) {
+          Object.defineProperty(process, 'platform', platform)
+        }
+      }
+
+      expect(spawnMock).toHaveBeenCalledWith(
+        'wsl.exe',
+        ['-d', 'Ubuntu', '--', 'sh', '-c', expect.stringContaining("cd '/home/jin/repo/subdir'")],
+        expect.objectContaining({ cwd: expect.any(String) })
+      )
+    })
+
+    it('resolves the Git Bash default shell and preserves the requested cwd', async () => {
+      const platform = Object.getOwnPropertyDescriptor(process, 'platform')
+      const originalProgramFiles = process.env.ProgramFiles
+      Object.defineProperty(process, 'platform', { value: 'win32' })
+      process.env.ProgramFiles = 'C:\\Program Files'
+      provider.configure({ getWindowsShell: () => 'git-bash' })
+
+      try {
+        await provider.spawn({
+          cols: 80,
+          rows: 24,
+          cwd: 'C:\\Users\\jin\\repo'
+        })
+      } finally {
+        if (platform) {
+          Object.defineProperty(process, 'platform', platform)
+        }
+        if (originalProgramFiles === undefined) {
+          delete process.env.ProgramFiles
+        } else {
+          process.env.ProgramFiles = originalProgramFiles
+        }
+      }
+
+      expect(spawnMock).toHaveBeenCalledWith(
+        'C:\\Program Files\\Git\\bin\\bash.exe',
+        ['-c', 'chcp.com 65001 >/dev/null 2>&1; exec "$BASH" --login -i'],
+        expect.objectContaining({
+          cwd: 'C:\\Users\\jin\\repo',
+          env: expect.objectContaining({
+            CHERE_INVOKING: '1',
+            PYTHONUTF8: '1'
+          })
+        })
+      )
+    })
+  })
+
+  describe('write', () => {
+    it('writes data to the PTY process', async () => {
+      const { id } = await provider.spawn({ cols: 80, rows: 24 })
+      provider.write(id, 'hello')
+      expect(mockProc.write).toHaveBeenCalledWith('hello')
+    })
+
+    it('is a no-op for unknown PTY ids', () => {
+      provider.write('nonexistent', 'hello')
+      expect(mockProc.write).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('resize', () => {
+    it('resizes the PTY process', async () => {
+      const { id } = await provider.spawn({ cols: 80, rows: 24 })
+      provider.resize(id, 120, 40)
+      expect(mockProc.resize).toHaveBeenCalledWith(120, 40)
+    })
+  })
+
+  describe('producer flow control', () => {
+    it('pauses and resumes the node-pty process directly', async () => {
+      const { id } = await provider.spawn({ cols: 80, rows: 24 })
+      provider.pauseProducer(id)
+      expect(mockProc.pause).toHaveBeenCalledTimes(1)
+      provider.resumeProducer(id)
+      expect(mockProc.resume).toHaveBeenCalledTimes(1)
+    })
+
+    it('is a no-op for unknown PTY ids', () => {
+      expect(() => {
+        provider.pauseProducer('nonexistent')
+        provider.resumeProducer('nonexistent')
+      }).not.toThrow()
+      expect(mockProc.pause).not.toHaveBeenCalled()
+      expect(mockProc.resume).not.toHaveBeenCalled()
+    })
+
+    it('swallows node-pty throws from a torn-down PTY', async () => {
+      const { id } = await provider.spawn({ cols: 80, rows: 24 })
+      mockProc.pause.mockImplementation(() => {
+        throw new Error('read EIO')
+      })
+      mockProc.resume.mockImplementation(() => {
+        throw new Error('read EIO')
+      })
+      expect(() => {
+        provider.pauseProducer(id)
+        provider.resumeProducer(id)
+      }).not.toThrow()
+    })
+  })
+
+  describe('shutdown', () => {
+    it('kills the PTY process', async () => {
+      // Why: capture the spy reference before shutdown triggers onExit →
+      // POSIX kill neutralization. After neutralization, mockProc.kill is
+      // replaced with a non-spy no-op to close the UnixTerminal.destroy() →
+      // socket-close → SIGHUP-to-recycled-pid race (see docs/fix-pty-fd-leak.md).
+      const killSpy = mockProc.kill
+      const { id } = await provider.spawn({ cols: 80, rows: 24 })
+      await provider.shutdown(id, { immediate: true })
+      expect(killSpy).toHaveBeenCalled()
+    })
+
+    it('invokes onExit callback via the node-pty exit handler', async () => {
+      const onExit = vi.fn()
+      provider.configure({ onExit })
+      const { id, incarnationId } = await provider.spawn({ cols: 80, rows: 24 })
+      await provider.shutdown(id, { immediate: true })
+      expect(onExit).toHaveBeenCalledWith(id, -1, incarnationId)
+    })
+
+    it('does not destroy after an intentional Windows shutdown kill', async () => {
+      Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' })
+      const killSpy = vi.fn()
+      const destroySpy = vi.fn(() => {
+        killSpy()
+      })
+      spawnMock.mockReturnValue({
+        ...mockProc,
+        kill: killSpy,
+        destroy: destroySpy
+      })
+
+      const { id } = await provider.spawn({ cols: 80, rows: 24 })
+      const shutdown = provider.shutdown(id, { immediate: true })
+      exitCb?.({ exitCode: -1 })
+      await shutdown
+
+      expect(killSpy).toHaveBeenCalledTimes(1)
+      expect(destroySpy).not.toHaveBeenCalled()
+    })
+
+    it('keeps shutdown and ownership pending until node-pty reports physical exit', async () => {
+      const killSpy = vi.fn()
+      mockProc.kill = killSpy
+      const { id } = await provider.spawn({ cols: 80, rows: 24 })
+
+      let settled = false
+      const shutdown = provider.shutdown(id, { immediate: true }).finally(() => {
+        settled = true
+      })
+      await Promise.resolve()
+
+      expect(killSpy).toHaveBeenCalledWith('SIGKILL')
+      expect(settled).toBe(false)
+      expect(provider.hasPty(id)).toBe(true)
+      exitCb?.({ exitCode: 137 })
+      await shutdown
+      expect(provider.hasPty(id)).toBe(false)
+    })
+
+    it('keeps physical-exit tracking when orphan cleanup races immediate shutdown', async () => {
+      const killSpy = vi.fn(() => {
+        queueMicrotask(() => exitCb?.({ exitCode: 137 }))
+      })
+      mockProc.kill = killSpy
+      const { id } = await provider.spawn({ cols: 80, rows: 24 })
+
+      const shutdown = provider.shutdown(id, { immediate: true })
+      expect(provider.killOrphanedPtys(1)).toEqual([{ id }])
+      expect(provider.hasPty(id)).toBe(true)
+
+      await expect(shutdown).resolves.toBeUndefined()
+      expect(killSpy).toHaveBeenCalledTimes(1)
+      expect(provider.hasPty(id)).toBe(false)
+    })
+
+    it('escalates graceful shutdown before orphan cleanup disables the kill handle', async () => {
+      vi.useFakeTimers()
+      try {
+        const killSpy = vi.fn()
+        mockProc.kill = killSpy
+        const { id } = await provider.spawn({ cols: 80, rows: 24 })
+
+        const graceful = provider.shutdown(id, { immediate: false })
+        expect(killSpy.mock.calls).toEqual([['SIGTERM']])
+
+        expect(provider.killOrphanedPtys(1)).toEqual([{ id }])
+        expect(killSpy.mock.calls).toEqual([['SIGTERM'], ['SIGKILL']])
+
+        // The original graceful deadline was replaced by the immediate
+        // escalation, so it cannot call the now-neutralized proc.kill later.
+        await vi.advanceTimersByTimeAsync(LOCAL_PTY_GRACEFUL_FORCE_TIMEOUT_MS)
+        expect(killSpy).toHaveBeenCalledTimes(2)
+        exitCb?.({ exitCode: 137 })
+        await graceful
+        expect(provider.hasPty(id)).toBe(false)
+        expect(vi.getTimerCount()).toBe(0)
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('escalates a graceful shutdown when destructive cleanup joins it', async () => {
+      const killSpy = vi.fn()
+      mockProc.kill = killSpy
+      const { id } = await provider.spawn({ cols: 80, rows: 24 })
+
+      const graceful = provider.shutdown(id, { immediate: false })
+      const immediate = provider.shutdown(id, { immediate: true })
+      expect(killSpy.mock.calls).toEqual([['SIGTERM'], ['SIGKILL']])
+
+      exitCb?.({ exitCode: 137 })
+      await Promise.all([graceful, immediate])
+      expect(provider.hasPty(id)).toBe(false)
+    })
+
+    it('force-kills a POSIX PTY that ignores graceful shutdown', async () => {
+      vi.useFakeTimers()
+      try {
+        const killSpy = vi.fn()
+        mockProc.kill = killSpy
+        const { id } = await provider.spawn({ cols: 80, rows: 24 })
+
+        const graceful = provider.shutdown(id, { immediate: false })
+        expect(killSpy.mock.calls).toEqual([['SIGTERM']])
+
+        await vi.advanceTimersByTimeAsync(LOCAL_PTY_GRACEFUL_FORCE_TIMEOUT_MS)
+        expect(killSpy.mock.calls).toEqual([['SIGTERM'], ['SIGKILL']])
+        exitCb?.({ exitCode: 137 })
+        await graceful
+        expect(provider.hasPty(id)).toBe(false)
+        expect(vi.getTimerCount()).toBe(0)
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('retries a rejected graceful-deadline SIGKILL before the physical timeout', async () => {
+      vi.useFakeTimers()
+      try {
+        let forceAttempts = 0
+        const killSpy = vi.fn((signal: string) => {
+          if (signal === 'SIGKILL' && forceAttempts++ === 0) {
+            throw new Error('transient force-kill failure')
+          }
+        })
+        mockProc.kill = killSpy
+        const { id } = await provider.spawn({ cols: 80, rows: 24 })
+
+        const graceful = provider.shutdown(id, { immediate: false })
+        await vi.advanceTimersByTimeAsync(LOCAL_PTY_GRACEFUL_FORCE_TIMEOUT_MS)
+        expect(killSpy.mock.calls).toEqual([['SIGTERM'], ['SIGKILL']])
+        expect(provider.hasPty(id)).toBe(true)
+
+        await vi.advanceTimersByTimeAsync(LOCAL_PTY_FORCE_KILL_RETRY_MS)
+        expect(killSpy.mock.calls).toEqual([['SIGTERM'], ['SIGKILL'], ['SIGKILL']])
+        exitCb?.({ exitCode: 137 })
+        await graceful
+        expect(provider.hasPty(id)).toBe(false)
+        expect(vi.getTimerCount()).toBe(0)
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('does not double-kill ConPTY when destructive cleanup joins shutdown', async () => {
+      Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' })
+      const killSpy = vi.fn()
+      mockProc.kill = killSpy
+      const { id } = await provider.spawn({ cols: 80, rows: 24 })
+
+      const graceful = provider.shutdown(id, { immediate: false })
+      const immediate = provider.shutdown(id, { immediate: true })
+      expect(killSpy.mock.calls).toEqual([[]])
+
+      exitCb?.({ exitCode: 137 })
+      await Promise.all([graceful, immediate])
+      expect(killSpy).toHaveBeenCalledTimes(1)
+      expect(provider.hasPty(id)).toBe(false)
+    })
+
     it('coalesces Windows agent shutdown around one native Job Object kill and physical exit', async () => {
       Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' })
       const killSpy = vi.fn()
@@ -250,6 +1431,7 @@ describe('LocalPtyProvider', () => {
       expect(terminateDescendantSnapshotMock).not.toHaveBeenCalled()
       expect(provider.hasPty(id)).toBe(false)
     })
+
     it('rejects a physical-exit timeout but retains the owner for a successful retry', async () => {
       vi.useFakeTimers()
       try {
@@ -308,15 +1490,11 @@ describe('LocalPtyProvider', () => {
     })
 
     it('waits for an in-flight agent shutdown before reusing the same session id', async () => {
-      let releaseSweep!: () => void
-      killWithDescendantSweepMock.mockImplementation(
-        (_rootPid: number, killRoot: () => void) =>
-          new Promise<void>((resolve) => {
-            releaseSweep = () => {
-              killRoot()
-              resolve()
-            }
-          })
+      let resolveSnapshot!: (value: null) => void
+      captureDescendantSnapshotMock.mockReturnValue(
+        new Promise<null>((resolve) => {
+          resolveSnapshot = resolve
+        })
       )
       const spawnArgs = {
         cols: 80,
@@ -332,22 +1510,18 @@ describe('LocalPtyProvider', () => {
       await Promise.resolve()
       expect(spawnMock).toHaveBeenCalledTimes(spawnCallsBefore + 1)
 
-      releaseSweep()
+      resolveSnapshot(null)
       await shutdown
       await respawn
       expect(spawnMock).toHaveBeenCalledTimes(spawnCallsBefore + 2)
     })
 
-    it('coalesces duplicate shutdown while descendant sweep is pending', async () => {
-      let releaseSweep!: () => void
-      killWithDescendantSweepMock.mockImplementation(
-        (_rootPid: number, killRoot: () => void) =>
-          new Promise<void>((resolve) => {
-            releaseSweep = () => {
-              killRoot()
-              resolve()
-            }
-          })
+    it('coalesces duplicate shutdown while descendant capture is pending', async () => {
+      let resolveSnapshot!: (value: null) => void
+      captureDescendantSnapshotMock.mockReturnValue(
+        new Promise<null>((resolve) => {
+          resolveSnapshot = resolve
+        })
       )
       const { id } = await provider.spawn({
         cols: 80,
@@ -357,27 +1531,22 @@ describe('LocalPtyProvider', () => {
 
       const first = provider.shutdown(id, { immediate: true })
       const second = provider.shutdown(id, { immediate: true })
-      expect(killWithDescendantSweepMock).toHaveBeenCalledOnce()
-      releaseSweep()
+      expect(captureDescendantSnapshotMock).toHaveBeenCalledOnce()
+      resolveSnapshot(null)
       await Promise.all([first, second])
-      expect(killWithDescendantSweepMock).toHaveBeenCalledOnce()
+      expect(captureDescendantSnapshotMock).toHaveBeenCalledOnce()
     })
 
-    it('does not terminate descendants after the tracked root exits mid-sweep', async () => {
-      const terminateDescendants = vi.fn()
-      let releaseSweep!: () => void
-      killWithDescendantSweepMock.mockImplementation(
-        (_rootPid: number, killRoot: () => void, deps?: { ownsRoot?: () => boolean }) =>
-          new Promise<void>((resolve) => {
-            releaseSweep = () => {
-              // Production killWithDescendantSweep only signals descendants while ownsRoot.
-              if (deps?.ownsRoot?.() ?? true) {
-                terminateDescendants()
-              }
-              killRoot()
-              resolve()
-            }
-          })
+    it('does not signal a captured tree after the tracked root exits naturally', async () => {
+      let resolveSnapshot!: (value: {
+        rootPgid: number
+        descendants: []
+        capturedAtMs: number
+      }) => void
+      captureDescendantSnapshotMock.mockReturnValue(
+        new Promise((resolve) => {
+          resolveSnapshot = resolve
+        })
       )
       const { id } = await provider.spawn({
         cols: 80,
@@ -387,10 +1556,10 @@ describe('LocalPtyProvider', () => {
 
       const shutdown = provider.shutdown(id, { immediate: true })
       exitCb?.({ exitCode: 0 })
-      releaseSweep()
+      resolveSnapshot({ rootPgid: mockProc.pid, descendants: [], capturedAtMs: Date.now() })
       await shutdown
 
-      expect(terminateDescendants).not.toHaveBeenCalled()
+      expect(terminateDescendantSnapshotMock).not.toHaveBeenCalled()
     })
 
     it('win32 immediate shutdown of a plain shell taskkills the descendant tree', async () => {
@@ -716,28 +1885,6 @@ describe('LocalPtyProvider', () => {
       expect(newEntries[0]).toHaveProperty('title', 'zsh')
       expect(newEntries[0]).toHaveProperty('cwd', '/tmp/owned-cwd')
       expect(newEntries[0]).toHaveProperty('worktreeId', 'repo::/tmp/owned-cwd')
-      expect(newEntries[0]).not.toHaveProperty('wslDistro')
-      expect(newEntries[1]).not.toHaveProperty('wslDistro')
-    })
-
-    it('reports native and WSL ownership explicitly on Windows', async () => {
-      Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' })
-      const native = await provider.spawn({
-        cols: 80,
-        rows: 24,
-        cwd: 'C:\\repo',
-        shellOverride: 'powershell.exe'
-      })
-      const wsl = await provider.spawn({
-        cols: 80,
-        rows: 24,
-        cwd: '\\\\wsl.localhost\\Ubuntu\\home\\jin\\repo'
-      })
-
-      const processes = await provider.listProcesses()
-
-      expect(processes.find((process) => process.id === native.id)?.wslDistro).toBeNull()
-      expect(processes.find((process) => process.id === wsl.id)?.wslDistro).toBe('Ubuntu')
     })
   })
 
