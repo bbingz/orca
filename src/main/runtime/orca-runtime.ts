@@ -408,6 +408,7 @@ import type {
   RuntimeMobileSessionTabsRemovedResult,
   RuntimeMobileSessionTabsResult,
   RuntimeMobileSessionTabsSnapshot,
+  RuntimeMobileTerminalTheme,
   RuntimeSessionTabCloseReason,
   RuntimeBrowserDriverState,
   RuntimeTerminalDriverState,
@@ -416,6 +417,7 @@ import type {
   BrowserTabInfo,
   BrowserScreencastResult
 } from '../../shared/runtime-types'
+import { resolveRuntimeMobileTerminalTheme } from '../../shared/runtime-mobile-terminal-theme'
 import type { AutomationService } from '../automations/service'
 import { RuntimeBrowserCommands } from './orca-runtime-browser'
 import { RemoteRuntimeTerminalCreateIdempotency } from './remote-runtime-terminal-create-idempotency'
@@ -1046,6 +1048,19 @@ type RuntimeStore = {
     terminalMainSideEffectAuthority?: GlobalSettings['terminalMainSideEffectAuthority']
     terminalHiddenDeliveryGate?: GlobalSettings['terminalHiddenDeliveryGate']
     terminalModelQueryAuthority?: GlobalSettings['terminalModelQueryAuthority']
+    // Why: the host terminal palette published to headless mobile tabs. All
+    // optional even where GlobalSettings requires them — test store mocks
+    // return literals with as few as five keys.
+    theme?: GlobalSettings['theme']
+    terminalThemeDark?: GlobalSettings['terminalThemeDark']
+    terminalThemeLight?: GlobalSettings['terminalThemeLight']
+    terminalUseSeparateLightTheme?: GlobalSettings['terminalUseSeparateLightTheme']
+    terminalDividerColorDark?: GlobalSettings['terminalDividerColorDark']
+    terminalDividerColorLight?: GlobalSettings['terminalDividerColorLight']
+    terminalCustomThemes?: GlobalSettings['terminalCustomThemes']
+    terminalColorOverrides?: GlobalSettings['terminalColorOverrides']
+    terminalBackgroundOpacity?: GlobalSettings['terminalBackgroundOpacity']
+    terminalCursorOpacity?: GlobalSettings['terminalCursorOpacity']
   }
   // Why: narrow to `unknown` return so test mocks can return void without
   // a cast. The runtime never reads the return value — the persisted value
@@ -4747,6 +4762,12 @@ export class OrcaRuntimeService {
    * Publishes a PTY-backed terminal tab snapshot to the synced mobile session,
    * normalizing Pi-compatible titles based on launch or foreground ownership.
    */
+  // Why: main has no matchMedia; mirror the renderer's no-matchMedia dark bias
+  // (getSystemPrefersDark, src/renderer/src/lib/terminal-theme.ts:38-43).
+  private resolveHostMobileTerminalTheme(): RuntimeMobileTerminalTheme | undefined {
+    return resolveRuntimeMobileTerminalTheme(this.store?.getSettings?.(), true)
+  }
+
   private publishPtyBackedMobileSessionTerminal(
     worktreeId: string,
     pty: RuntimePtyWorktreeRecord,
@@ -4805,6 +4826,7 @@ export class OrcaRuntimeService {
           candidate.parentTabId === args.tabId &&
           candidate.viewMode !== undefined
       )?.viewMode
+    const terminalTheme = this.resolveHostMobileTerminalTheme()
     const tab: RuntimeMobileSessionTerminalTab = {
       type: 'terminal',
       id: `${args.tabId}::${args.leafId}`,
@@ -4812,6 +4834,7 @@ export class OrcaRuntimeService {
       leafId: args.leafId,
       ptyId: pty.ptyId,
       title,
+      ...(terminalTheme ? { terminalTheme } : {}),
       ...(pty.launchAgent ? { launchAgent: pty.launchAgent } : {}),
       ...(args.startupCwd ? { startupCwd: args.startupCwd } : {}),
       ...(viewMode ? { viewMode } : {}),
@@ -5082,6 +5105,7 @@ export class OrcaRuntimeService {
     if (!session) {
       return []
     }
+    const terminalTheme = this.resolveHostMobileTerminalTheme()
     return [...persistedTabs]
       .sort((a, b) => a.sortOrder - b.sortOrder || a.createdAt - b.createdAt)
       .flatMap((tab, index) => {
@@ -5107,6 +5131,7 @@ export class OrcaRuntimeService {
               leafId,
               title,
               ...(ptyId ? { ptyId } : {}),
+              ...(terminalTheme ? { terminalTheme } : {}),
               ...(tab.startupCwd ? { startupCwd: tab.startupCwd } : {}),
               ...(tab.launchAgent ? { launchAgent: tab.launchAgent } : {}),
               ...(layout ? { parentLayout: this.cloneTerminalLayoutSnapshot(layout) } : {}),
@@ -22536,6 +22561,7 @@ export class OrcaRuntimeService {
       livePty.pty.ptyId,
       existingSurface?.parentLayout
     )
+    const terminalTheme = this.resolveHostMobileTerminalTheme()
     const tab: RuntimeMobileSessionTerminalTab = {
       type: 'terminal',
       id: `${parentTabId}::${leafId}`,
@@ -22543,6 +22569,7 @@ export class OrcaRuntimeService {
       leafId,
       ptyId: livePty.pty.ptyId,
       title: terminal.title ?? livePty.pty.title ?? 'Terminal',
+      ...(terminalTheme ? { terminalTheme } : {}),
       ...(cwd ? { startupCwd: cwd } : {}),
       ...(opts.launchAgent ? { launchAgent: opts.launchAgent } : {}),
       ...(opts.viewMode ? { viewMode: opts.viewMode } : {}),
