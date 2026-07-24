@@ -245,8 +245,9 @@ import {
   dismissMobileSessionCreateWarningState,
   reconcileMobileSessionCreateWarningState
 } from '../../../../src/session/mobile-session-create-warning-state'
-import { colors, spacing } from '../../../../src/theme/mobile-theme'
-import { styles } from './mobile-session-styles'
+import { spacing } from '../../../../src/theme/mobile-theme'
+import { useTheme, useThemedStyles } from '../../../../src/theme/theme-context'
+import { createMobileSessionStyles } from './mobile-session-styles'
 import { QuickCommandsTabButton } from './QuickCommandsTabButton'
 import type { DiffComment, TerminalQuickCommand } from '../../../../../src/shared/types'
 import type {
@@ -291,6 +292,8 @@ function MarkdownReader({
   onDiscard: () => void
   keyboardLift: number
 }) {
+  const { colors } = useTheme()
+  const styles = useThemedStyles(createMobileSessionStyles)
   // Native Keyboard events under-report the WebView editor's covered area, so prefer the larger WebView-measured inset.
   const [webviewKeyboardInset, setWebviewKeyboardInset] = useState(0)
   const effectiveKeyboardLift = Math.max(keyboardLift, webviewKeyboardInset)
@@ -425,6 +428,8 @@ function DiffLineRow({
   onSubmitComment: (lineNumber: number) => void
   onDeleteComment: (commentId: string) => void
 }) {
+  const { colors } = useTheme()
+  const styles = useThemedStyles(createMobileSessionStyles)
   const commentLine = line.newLineNumber
   const isCommenting = commentLine !== undefined && activeCommentLine === commentLine
   const canComment = commentLine !== undefined
@@ -551,6 +556,8 @@ function FileReader({
   language?: string
   diffCommentActions?: DiffCommentActions
 }) {
+  const { colors } = useTheme()
+  const styles = useThemedStyles(createMobileSessionStyles)
   const syntaxLanguage = useMemo(
     () => resolveMobileSyntaxLanguage(relativePath || title, language),
     [language, relativePath, title]
@@ -809,6 +816,8 @@ function FileReader({
 }
 
 export default function SessionScreen() {
+  const { colors } = useTheme()
+  const styles = useThemedStyles(createMobileSessionStyles)
   const {
     hostId,
     worktreeId,
