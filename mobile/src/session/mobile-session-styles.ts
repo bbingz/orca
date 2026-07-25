@@ -1,4 +1,4 @@
-import type { ThemeColors } from '../../../../src/theme/mobile-theme'
+import type { ThemeColors } from '../theme/mobile-theme'
 import { createMobileSessionCommandInputStyles } from './mobile-session-command-input-styles'
 import { createMobileSessionFrameStyles } from './mobile-session-frame-styles'
 import { createMobileSessionReaderStyles } from './mobile-session-reader-styles'

@@ -1,6 +1,6 @@
 import { StyleSheet } from 'react-native'
 
-import { spacing, radii, typography, type ThemeColors } from '../../../../src/theme/mobile-theme'
+import { spacing, radii, typography, type ThemeColors } from '../theme/mobile-theme'
 
 export const createMobileSessionFrameStyles = (colors: ThemeColors) =>
   StyleSheet.create({
