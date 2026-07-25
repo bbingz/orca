@@ -8122,6 +8122,7 @@ export default function MobileTasksScreen() {
     }
   }, [
     client,
+    colors,
     createBody,
     createRepoId,
     createTeamId,
@@ -8355,7 +8356,7 @@ export default function MobileTasksScreen() {
     provider === 'linear' || (provider === 'github' && githubMode === 'items')
   const providerOptions = useMemo(
     () => buildProviderOptions(colors).filter((option) => visibleProviders.includes(option.value)),
-    [visibleProviders]
+    [colors, visibleProviders]
   )
   const selectedCreateRepo =
     provider === 'github' || provider === 'gitlab'
@@ -8420,7 +8421,7 @@ export default function MobileTasksScreen() {
       next.sort(compareTasksByUpdated)
     }
     return next
-  }, [items, reposById, taskSort])
+  }, [colors, items, reposById, taskSort])
   const displayedEntries = useMemo<TaskListEntry[]>(() => {
     if (taskSort !== 'repository') {
       return sortedItems.map((item) => ({ type: 'item', key: item.key, item }))
@@ -8576,7 +8577,7 @@ export default function MobileTasksScreen() {
   )
   const linearIssueSections = useMemo(
     () => groupLinearIssues(linearIssuesForView, linearGroupBy, linearOrderBy, colors),
-    [linearGroupBy, linearIssuesForView, linearOrderBy]
+    [colors, linearGroupBy, linearIssuesForView, linearOrderBy]
   )
   // Why: FlatList treats data identity as meaningful; unrelated renders should
   // not rebuild the section/item wrapper array.
@@ -8600,7 +8601,7 @@ export default function MobileTasksScreen() {
         linearOrderBy,
         colors
       ),
-    [linearGroupBy, linearIssuesForView, linearOrderBy]
+    [colors, linearGroupBy, linearIssuesForView, linearOrderBy]
   )
   const githubModeLabel =
     githubMode === 'project' ? 'Projects' : githubKind === 'prs' ? 'PRs' : 'Issues'
