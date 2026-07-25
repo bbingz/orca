@@ -1,5 +1,5 @@
 import { StyleSheet } from 'react-native'
-import { spacing, typography, radii, type ThemeColors } from '../../../src/theme/mobile-theme'
+import { spacing, typography, radii, type ThemeColors } from '../theme/mobile-theme'
 
 export const createAccountsScreenStyles = (colors: ThemeColors) =>
   StyleSheet.create({

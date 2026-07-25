@@ -15,7 +15,7 @@ import { loadHosts } from '../../../src/transport/host-store'
 import { useHostClient } from '../../../src/transport/client-context'
 import { spacing } from '../../../src/theme/mobile-theme'
 import { useTheme, useThemedStyles } from '../../../src/theme/theme-context'
-import { createAccountsScreenStyles } from './accounts-screen-styles'
+import { createAccountsScreenStyles } from '../../../src/host/accounts-screen-styles'
 import { useNow } from '../../../src/hooks/use-now'
 import { ClaudeIcon, OpenAIIcon } from '../../../src/components/AgentIcons'
 import {
