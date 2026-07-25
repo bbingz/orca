@@ -141,17 +141,17 @@ async function loadThemedFactories(): Promise<readonly StyleFactory[]> {
     import('../components/DragReorderList'),
     import('../onboarding/mobile-onboarding-styles'),
     import('../components/MobileHostCard'),
-    import('../../app/h/[hostId]/accounts-screen-styles'),
+    import('../host/accounts-screen-styles'),
     import('../host/host-screen-chrome-styles'),
     import('../host/host-worktree-list-styles'),
     import('../components/smart-workspace-source-drawer-styles'),
     import('../agent-history/agent-history-styles'),
     import('../browser/MobileBrowserKeyRow'),
     import('../browser/MobileBrowserViewModeSwitch'),
-    import('../../app/h/[hostId]/session/mobile-session-frame-styles'),
-    import('../../app/h/[hostId]/session/mobile-session-reader-styles'),
-    import('../../app/h/[hostId]/session/mobile-session-review-comment-styles'),
-    import('../../app/h/[hostId]/session/mobile-session-command-input-styles'),
+    import('../session/mobile-session-frame-styles'),
+    import('../session/mobile-session-reader-styles'),
+    import('../session/mobile-session-review-comment-styles'),
+    import('../session/mobile-session-command-input-styles'),
     import('../session/MobileAgentWorkingIndicator'),
     import('../terminal/terminal-webview-engine-error-state'),
     import('../session/mobile-native-chat-view-styles'),
@@ -617,8 +617,7 @@ describe('themed style factories', () => {
     expect(hostCard.card.backgroundColor).toBe(darkColors.bgPanel)
     expect(hostCard.cardPressed.backgroundColor).toBe(darkColors.bgRaised)
 
-    const { createAccountsScreenStyles } =
-      await import('../../app/h/[hostId]/accounts-screen-styles')
+    const { createAccountsScreenStyles } = await import('../host/accounts-screen-styles')
     const { createHostScreenChromeStyles } = await import('../host/host-screen-chrome-styles')
     const { createHostWorktreeListStyles } = await import('../host/host-worktree-list-styles')
     const accounts = createAccountsScreenStyles(darkColors)
@@ -642,7 +641,7 @@ describe('themed style factories', () => {
     expect(history.title.color).toBe(darkColors.textPrimary)
 
     const { createMobileSessionFrameStyles } =
-      await import('../../app/h/[hostId]/session/mobile-session-frame-styles')
+      await import('../session/mobile-session-frame-styles')
     const { createTerminalWebViewEngineErrorStyles } =
       await import('../terminal/terminal-webview-engine-error-state')
     const frame = createMobileSessionFrameStyles(darkColors)

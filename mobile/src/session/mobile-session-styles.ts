@@ -1,5 +1,5 @@
-import type { ThemeColors } from '../../../../src/theme/mobile-theme'
-import { useTheme, useThemedStyles } from '../../../../src/theme/theme-context'
+import type { ThemeColors } from '../theme/mobile-theme'
+import { useTheme, useThemedStyles } from '../theme/theme-context'
 import { createMobileSessionCommandInputStyles } from './mobile-session-command-input-styles'
 import { createMobileSessionFrameStyles } from './mobile-session-frame-styles'
 import { createMobileSessionReaderStyles } from './mobile-session-reader-styles'
