@@ -1,6 +1,5 @@
 // xterm.js WebView document + default Tokyonight theme; extracted from TerminalWebView.tsx for the max-lines budget.
 import type { RuntimeMobileTerminalTheme } from '../../../src/shared/runtime-types'
-import { colors } from '../theme/mobile-theme'
 import { TERMINAL_TEXT_SCALES } from '../storage/preferences'
 import { TERMINAL_PATH_TAP_JS } from './terminal-path-tap-injected'
 import { XTERM_ENGINE_CSS, XTERM_ENGINE_JS } from './terminal-webview-engine.generated'
@@ -13,10 +12,11 @@ import { URL_TAP_WEBVIEW_JS } from './terminal-webview-url-tap'
 import { TERMINAL_WEBGL_RECOVERY_JS } from './terminal-webview-webgl-recovery-injected'
 
 export const DEFAULT_TERMINAL_THEME: RuntimeMobileTerminalTheme['theme'] = {
-  background: colors.terminalBg,
+  // Dark Tokyonight defaults (darkColors.terminalBg). Live themes override via set-theme.
+  background: '#1a1b26',
   foreground: '#c0caf5',
   cursor: '#c0caf5',
-  cursorAccent: colors.terminalBg,
+  cursorAccent: '#1a1b26',
   selectionBackground: '#33467c',
   selectionForeground: '#c0caf5',
   black: '#15161e',
@@ -53,9 +53,13 @@ window.onerror = function(msg) {
 </script>
 <style>${XTERM_ENGINE_CSS}</style>
 <style>
+  :root {
+    --terminal-fallback-bg: #1a1b26;
+    --terminal-scrollbar: #888888;
+  }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body {
-    background: ${colors.terminalBg};
+    background: var(--terminal-fallback-bg);
     overflow: hidden;
     width: 100%;
     height: 100%;
@@ -108,7 +112,7 @@ window.onerror = function(msg) {
     width: 3px;
     min-height: 24px;
     border-radius: 999px;
-    background: ${colors.textSecondary};
+    background: var(--terminal-scrollbar);
     will-change: transform, height;
   }
   /* Why: selection overlay sits in unscaled viewport coords, above the
@@ -666,7 +670,7 @@ ${TERMINAL_WEBVIEW_THEME_JS}
 
 ${TERMINAL_WEBGL_RECOVERY_JS}
 
-  function init(cols, rows, initialData, nextTheme, nextFontScale, preserveScroll, nextOscLinks) {
+  function init(cols, rows, initialData, nextTheme, nextFontScale, preserveScroll, nextOscLinks, nextAppChrome) {
     if (typeof nextFontScale === 'number' && nextFontScale > 0) currentTextScale = nextFontScale;
     // Why: a width-reflow re-stream rewraps the same content at new cols.
     // Distance-from-bottom (rows) is the only stable anchor across reflow,
@@ -710,7 +714,7 @@ ${TERMINAL_WEBGL_RECOVERY_JS}
     var surfaceSwap = beginTerminalSurfaceSwap();
     var nextSurface = surfaceSwap.nextSurface;
 
-    applyTerminalTheme(nextTheme);
+    applyTerminalTheme(nextTheme, nextAppChrome);
     term = new Terminal({
       cols: cols || 80,
       rows: rows || 24,
@@ -916,7 +920,7 @@ ${TERMINAL_WEBGL_RECOVERY_JS}
     if (msg.type === 'ping') {
       notify({ type: 'pong', pingId: msg.id });
     } else if (msg.type === 'init') {
-      init(msg.cols, msg.rows, msg.initialData, msg.terminalTheme, msg.fontScale, msg.preserveScroll, msg.oscLinks);
+      init(msg.cols, msg.rows, msg.initialData, msg.terminalTheme, msg.fontScale, msg.preserveScroll, msg.oscLinks, msg.appChrome);
     } else if (msg.type === 'set-font-scale') {
       // Why: ignore RN echoing back the value a pinch just set (msg.fontScale ===
       // currentTextScale) so the post-pinch state isn't reset; only apply changes.
@@ -956,7 +960,7 @@ ${TERMINAL_WEBGL_RECOVERY_JS}
     } else if (msg.type === 'reset-zoom') {
       applyFitScale('reset-zoom-msg');
     } else if (msg.type === 'set-theme') {
-      applyTerminalTheme(msg.terminalTheme);
+      applyTerminalTheme(msg.terminalTheme, msg.appChrome);
     } else if (msg.type === 'cancel-select') {
       if (selMode === 'select') cancelSelect();
     } else if (msg.type === 'do-select-all') {
