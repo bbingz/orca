@@ -357,7 +357,7 @@ export const createMobileNativeChatComposerStyles = (colors: ThemeColors) =>
       borderRadius: 20,
       alignItems: 'center',
       justifyContent: 'center',
-      // White send affordance per design — dark arrow on a light circle.
+      // Inverted send affordance: bgBase arrow on a textPrimary circle.
       backgroundColor: colors.textPrimary
     },
     sendButtonDisabled: {
