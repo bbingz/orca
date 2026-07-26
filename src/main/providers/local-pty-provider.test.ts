@@ -1433,6 +1433,25 @@ describe('LocalPtyProvider', () => {
       expect(provider.hasPty(id)).toBe(false)
     })
 
+    it('sweeps WSL agent descendants when no Windows Job Object owns the tree', async () => {
+      Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' })
+      const { id } = await provider.spawn({
+        cols: 80,
+        rows: 24,
+        launchAgent: 'claude',
+        shellOverride: 'wsl'
+      })
+      expect(spawnMock.mock.calls.at(-1)?.[2]).not.toHaveProperty('useConptyJobObject')
+
+      await provider.shutdown(id, { immediate: true })
+
+      expect(killWithDescendantSweepMock).toHaveBeenCalledWith(
+        mockProc.pid,
+        expect.any(Function),
+        expect.objectContaining({ ownsRoot: expect.any(Function) })
+      )
+    })
+
     it('rejects a physical-exit timeout but retains the owner for a successful retry', async () => {
       vi.useFakeTimers()
       try {
