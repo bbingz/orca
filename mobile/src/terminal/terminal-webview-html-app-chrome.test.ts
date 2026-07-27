@@ -5,7 +5,10 @@ import { darkColors } from '../theme/mobile-theme'
 describe('terminal webview HTML app-chrome defaults', () => {
   it('keeps XTERM_WEBVIEW_SOURCE a stable module constant (no colors import)', async () => {
     expect(XTERM_WEBVIEW_SOURCE).toEqual({ html: XTERM_HTML })
-    expect(XTERM_WEBVIEW_SOURCE).toBe(XTERM_WEBVIEW_SOURCE)
+    // Why re-import: the module is cached, so identity proves the source is a
+    // module-level constant rather than re-created per access.
+    const reimported = await import('./terminal-webview-html')
+    expect(reimported.XTERM_WEBVIEW_SOURCE).toBe(XTERM_WEBVIEW_SOURCE)
     // Module must not import the app palette — source identity must stay stable.
     const src = await import('node:fs').then((fs) =>
       fs.readFileSync(new URL('./terminal-webview-html.ts', import.meta.url), 'utf8')
