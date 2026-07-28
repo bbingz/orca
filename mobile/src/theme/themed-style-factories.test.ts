@@ -524,9 +524,10 @@ function listDeclaredFactories(): string[] {
   const names = roots
     .flatMap((root) => walkSources(root))
     .flatMap((file) => [
-      // Why [:=(]: also catch annotated factories (`createXStyles: Type =`),
-      // which would otherwise escape the accounts-for-every-factory guard.
-      ...fs.readFileSync(file, 'utf8').matchAll(/export const (create[A-Za-z0-9]*Styles)\s*[:=]/g)
+      // Why [:=(]: include annotated constants and function declarations in the completeness guard.
+      ...fs
+        .readFileSync(file, 'utf8')
+        .matchAll(/export (?:const|function) (create[A-Za-z0-9]*Styles)\s*[:=(]/g)
     ])
     .map((match) => match[1])
   return [...new Set(names)].sort()
