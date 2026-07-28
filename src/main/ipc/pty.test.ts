@@ -6568,6 +6568,7 @@ describe('registerPtyHandlers', () => {
         'pty-known-launch',
         'claude'
       )
+      expect(runtime.recordPtyForegroundProcessObservation).toHaveBeenCalledTimes(2)
     } finally {
       clearProviderPtyState('pty-known-launch')
     }
