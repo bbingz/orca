@@ -26,14 +26,17 @@ function suppressRendererWarning(): () => void {
 
 describe('terminal live input fallback', () => {
   let renderer: ReactTestRenderer | null = null
+  let previousActEnvironment: boolean | undefined
 
   beforeEach(() => {
+    previousActEnvironment = globalThis.IS_REACT_ACT_ENVIRONMENT
     globalThis.IS_REACT_ACT_ENVIRONMENT = true
   })
 
   afterEach(() => {
     act(() => renderer?.unmount())
     renderer = null
+    globalThis.IS_REACT_ACT_ENVIRONMENT = previousActEnvironment
   })
 
   it('uses submit as the sole Enter path while forwarding other keys', async () => {
