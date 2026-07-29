@@ -95,6 +95,7 @@ const EXT_TO_LANGUAGE: Record<string, string> = {
   '.nimble': 'nim',
   '.tf': 'hcl',
   '.hcl': 'hcl',
+  '.tfvars': 'hcl',
   '.prisma': 'graphql',
   '.csv': 'csv',
   '.tsv': 'tsv'
@@ -103,6 +104,10 @@ const EXT_TO_LANGUAGE: Record<string, string> = {
 const FILENAME_TO_LANGUAGE: Record<string, string> = {
   Dockerfile: 'dockerfile',
   Makefile: 'makefile',
+  justfile: 'shell',
+  Justfile: 'shell',
+  '.justfile': 'shell',
+  '.just': 'shell',
   'CMakeLists.txt': 'cmake',
   '.gitignore': 'ini',
   '.gitattributes': 'ini',
