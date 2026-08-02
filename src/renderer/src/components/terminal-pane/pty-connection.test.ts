@@ -123,7 +123,7 @@ async function renderHeadlessTerminalState(
   }
 }
 
-const toastInfo = vi.fn()
+const { toastInfo } = vi.hoisted(() => ({ toastInfo: vi.fn() }))
 const notifyCodexPaneBoundForStaleSweep = vi.fn()
 const LEAF_1 = '11111111-1111-4111-8111-111111111111' as const
 const LEAF_2 = '22222222-2222-4222-8222-222222222222' as const
