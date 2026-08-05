@@ -1,0 +1,8 @@
+ src/renderer/src/components/editor/MarkdownPreview.tsx  |  7 +++----
+ src/renderer/src/components/editor/MermaidBlock.tsx     | 17 +++++++----------
+ src/renderer/src/components/editor/MermaidViewer.tsx    |  5 +----
+ .../src/components/editor/RichMarkdownCodeBlock.tsx     |  6 ++----
+ .../src/components/editor/mermaid-config.test.ts        | 12 ++++++------
+ src/renderer/src/components/editor/mermaid-config.ts    |  4 +++-
+ .../src/components/sidebar/CommentMermaidBlock.tsx      |  6 ++----
+ 7 files changed, 24 insertions(+), 33 deletions(-)
