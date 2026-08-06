@@ -8,9 +8,9 @@ import {
   MessageSquare,
   X
 } from 'lucide-react-native'
-import { colors } from '../theme/mobile-theme'
 import { statusColor } from '../components/pr-sidebar/pr-sidebar-status-color'
-import { hubStyles } from './mobile-source-control-hub-styles'
+import { useTheme, useThemedStyles } from '../theme/theme-context'
+import { createMobileSourceControlHubStyles } from './mobile-source-control-hub-styles'
 import type { MobilePrChipRollup, MobilePrChipSummary } from './mobile-pr-chip-summary'
 
 type Props = {
@@ -22,6 +22,8 @@ type Props = {
 // Pull Request segment. Rendered only when the repo supports hosted review — the
 // parent gates on that, so this component always has something meaningful to show.
 export function MobileSourceControlPrChip({ summary, onPress }: Props) {
+  const { colors } = useTheme()
+  const hubStyles = useThemedStyles(createMobileSourceControlHubStyles)
   return (
     <Pressable
       style={({ pressed }) => [hubStyles.chip, pressed && hubStyles.chipPressed]}
@@ -55,8 +57,12 @@ export function MobileSourceControlPrChip({ summary, onPress }: Props) {
       ) : (
         <>
           <Text style={hubStyles.chipNumber}>#{summary.number}</Text>
-          <View style={[hubStyles.statePill, { borderColor: statusColor(summary.stateToken) }]}>
-            <Text style={[hubStyles.statePillText, { color: statusColor(summary.stateToken) }]}>
+          <View
+            style={[hubStyles.statePill, { borderColor: statusColor(summary.stateToken, colors) }]}
+          >
+            <Text
+              style={[hubStyles.statePillText, { color: statusColor(summary.stateToken, colors) }]}
+            >
               {summary.stateLabel}
             </Text>
           </View>
@@ -76,7 +82,9 @@ export function MobileSourceControlPrChip({ summary, onPress }: Props) {
 }
 
 function ChipRollup({ rollup }: { rollup: MobilePrChipRollup }) {
-  const color = statusColor(rollup.token)
+  const { colors } = useTheme()
+  const hubStyles = useThemedStyles(createMobileSourceControlHubStyles)
+  const color = statusColor(rollup.token, colors)
   return (
     <View style={hubStyles.rollup}>
       <RollupIcon kind={rollup.kind} color={color} />

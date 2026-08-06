@@ -3,9 +3,11 @@ import {
   buildMobileRichMarkdownEditorHtml,
   escapeInjectedJavaScriptString
 } from './mobile-rich-markdown-editor-html'
+import { mobileRichMarkdownEditorThemeVars } from './mobile-rich-markdown-editor-theme'
+import { darkColors, lightColors } from '../theme/mobile-theme'
 
 function editorScript(): string {
-  const html = buildMobileRichMarkdownEditorHtml()
+  const html = buildMobileRichMarkdownEditorHtml(darkColors)
   const script = html.match(/<script>([\s\S]*)<\/script>/)?.[1]
   expect(script).toBeTruthy()
   return script ?? ''
@@ -70,6 +72,17 @@ describe('mobile rich markdown editor HTML', () => {
     const script = editorScript()
 
     expect(() => new Function(script)).not.toThrow()
+  })
+
+  it('maps palette tokens to CSS vars so inject can flip theme without remount', () => {
+    const darkVars = mobileRichMarkdownEditorThemeVars(darkColors)
+    const lightVars = mobileRichMarkdownEditorThemeVars(lightColors)
+    expect(darkVars['--background']).toBe(darkColors.bgBase)
+    expect(lightVars['--background']).toBe(lightColors.bgBase)
+    expect(darkVars['--editor-surface']).toBe(darkColors.editorSurface)
+    expect(lightVars['--editor-surface']).toBe(lightColors.editorSurface)
+    expect(lightVars['--foreground']).toBe(lightColors.textPrimary)
+    expect(Object.keys(darkVars).sort()).toEqual(Object.keys(lightVars).sort())
   })
 
   it('escapes injected markdown without reopening script tags', () => {

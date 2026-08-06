@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, type ComponentType } from 'react'
+import { memo, useCallback, useEffect, useRef, type ComponentType } from 'react'
 import { Linking, Pressable, ScrollView, StyleSheet, View } from 'react-native'
 import {
   Bold,
@@ -18,12 +18,14 @@ import {
   Strikethrough
 } from 'lucide-react-native'
 import WebView, { type WebViewMessageEvent } from 'react-native-webview'
-import { colors, radii, spacing } from '../theme/mobile-theme'
+import { radii, spacing, type ThemeColors } from '../theme/mobile-theme'
+import { useTheme, useThemedStyles } from '../theme/theme-context'
 import { normalizeMobileRichMarkdownKeyboardInset } from './mobile-rich-markdown-editor-keyboard-inset-script'
 import {
   buildMobileRichMarkdownEditorHtml,
   escapeInjectedJavaScriptString
 } from './mobile-rich-markdown-editor-html'
+import { mobileRichMarkdownEditorThemeVars } from './mobile-rich-markdown-editor-theme'
 
 const EDITOR_DOCUMENT_ORIGIN = 'https://orca-mobile-editor.invalid'
 const EDITOR_DOCUMENT_URL = `${EDITOR_DOCUMENT_ORIGIN}/rich-markdown-editor`
@@ -113,11 +115,19 @@ function MobileRichMarkdownEditorInner({
   onChange,
   onKeyboardInsetChange
 }: Props) {
+  const { colors, mode } = useTheme()
+  const styles = useThemedStyles(createMobileRichMarkdownEditorStyles)
   const webViewRef = useRef<WebView>(null)
   const readyRef = useRef(false)
   const documentGenerationRef = useRef(0)
   const currentWebViewContentRef = useRef<string | null>(null)
-  const html = useMemo(() => buildMobileRichMarkdownEditorHtml(), [])
+  // Pin the HTML document to the first mount palette. Theme flips push CSS vars via
+  // setTheme so the WebView never remounts and mid-edit keystrokes are not lost.
+  const htmlRef = useRef<string | null>(null)
+  if (htmlRef.current === null) {
+    htmlRef.current = buildMobileRichMarkdownEditorHtml(colors, mode)
+  }
+  const html = htmlRef.current
 
   const inject = useCallback((script: string) => {
     webViewRef.current?.injectJavaScript(`${script}\ntrue;`)
@@ -143,6 +153,15 @@ function MobileRichMarkdownEditorInner({
     [inject]
   )
 
+  // Push CSS vars into the live document — do not rebuild `source.html` or the
+  // contentEditable surface remounts and drops uncommitted keystrokes.
+  const applyTheme = useCallback(() => {
+    const vars = mobileRichMarkdownEditorThemeVars(colors)
+    inject(
+      `(function(vars,scheme){var r=document.documentElement,k;if(scheme)r.style.colorScheme=scheme;if(!vars||typeof vars!=='object')return;for(k in vars)if(Object.prototype.hasOwnProperty.call(vars,k))r.style.setProperty(k,vars[k]);})(${JSON.stringify(vars)},${escapeInjectedJavaScriptString(mode)});`
+    )
+  }, [colors, inject, mode])
+
   useEffect(() => {
     if (!readyRef.current) {
       return
@@ -157,6 +176,12 @@ function MobileRichMarkdownEditorInner({
       applyEditable(editable)
     }
   }, [applyEditable, editable])
+
+  useEffect(() => {
+    if (readyRef.current) {
+      applyTheme()
+    }
+  }, [applyTheme])
 
   // Clear any reported keyboard inset when the editor unmounts so a lifted
   // Save/Discard bar settles back once the tab closes.
@@ -178,6 +203,7 @@ function MobileRichMarkdownEditorInner({
       const editorMessage = message as Partial<EditorWebViewMessage>
       if ('type' in message && message.type === 'ready') {
         readyRef.current = true
+        applyTheme()
         applyContent(content)
         applyEditable(editable)
         return
@@ -205,7 +231,7 @@ function MobileRichMarkdownEditorInner({
         }
       }
     },
-    [applyContent, applyEditable, content, editable, onChange, onKeyboardInsetChange]
+    [applyContent, applyEditable, applyTheme, content, editable, onChange, onKeyboardInsetChange]
   )
 
   const handleShouldStartLoadWithRequest = useCallback((request: { url?: string }) => {
@@ -280,41 +306,42 @@ function MobileRichMarkdownEditorInner({
 
 export const MobileRichMarkdownEditor = memo(MobileRichMarkdownEditorInner)
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    minHeight: 0,
-    backgroundColor: colors.bgBase
-  },
-  toolbar: {
-    minHeight: 42,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.borderSubtle,
-    backgroundColor: colors.bgPanel
-  },
-  toolbarContent: {
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 6
-  },
-  toolbarButton: {
-    minWidth: 30,
-    height: 30,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: radii.button,
-    paddingHorizontal: spacing.xs
-  },
-  toolbarButtonPressed: {
-    backgroundColor: colors.bgRaised
-  },
-  toolbarButtonDisabled: {
-    opacity: 0.55
-  },
-  webView: {
-    flex: 1,
-    minHeight: 0,
-    backgroundColor: colors.bgBase
-  }
-})
+export const createMobileRichMarkdownEditorStyles = (colors: ThemeColors) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      minHeight: 0,
+      backgroundColor: colors.bgBase
+    },
+    toolbar: {
+      minHeight: 42,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.borderSubtle,
+      backgroundColor: colors.bgPanel
+    },
+    toolbarContent: {
+      alignItems: 'center',
+      gap: 6,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: 6
+    },
+    toolbarButton: {
+      minWidth: 30,
+      height: 30,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderRadius: radii.button,
+      paddingHorizontal: spacing.xs
+    },
+    toolbarButtonPressed: {
+      backgroundColor: colors.bgRaised
+    },
+    toolbarButtonDisabled: {
+      opacity: 0.55
+    },
+    webView: {
+      flex: 1,
+      minHeight: 0,
+      backgroundColor: colors.bgBase
+    }
+  })

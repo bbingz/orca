@@ -1,11 +1,14 @@
-import { colors } from '../theme/mobile-theme'
+import type { ThemeColors } from '../theme/mobile-theme'
 import { MOBILE_RICH_MARKDOWN_KEYBOARD_INSET_SCRIPT } from './mobile-rich-markdown-editor-keyboard-inset-script'
 
 export function escapeInjectedJavaScriptString(value: string): string {
   return JSON.stringify(value).replace(/<\/script/gi, '<\\/script')
 }
 
-export function buildMobileRichMarkdownEditorHtml(): string {
+export function buildMobileRichMarkdownEditorHtml(
+  colors: ThemeColors,
+  colorScheme: 'light' | 'dark' = 'dark'
+): string {
   return `<!doctype html>
 <html>
 <head>
@@ -13,9 +16,9 @@ export function buildMobileRichMarkdownEditorHtml(): string {
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
   <style>
     :root {
-      color-scheme: dark;
+      color-scheme: ${colorScheme};
       --background: ${colors.bgBase};
-      --editor-surface: ${colors.bgBase};
+      --editor-surface: ${colors.editorSurface};
       --foreground: ${colors.textPrimary};
       --muted-foreground: ${colors.textSecondary};
       --muted: ${colors.bgRaised};

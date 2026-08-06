@@ -28,8 +28,15 @@ vi.mock('./PRSection', () => ({ PRSection: 'PRSection' }))
 vi.mock('./CommentMarkdown', () => ({ CommentMarkdown: 'CommentMarkdown' }))
 vi.mock('./PRCommentCard', () => ({ PRCommentCard: 'PRCommentCard' }))
 vi.mock('./PRCommentComposer', () => ({ PRCommentComposer: 'PRCommentComposer' }))
-vi.mock('./pr-comments-styles', () => ({ prCommentsStyles: {} }))
-vi.mock('./mobile-pr-sidebar-styles', () => ({ mobilePrSidebarStyles: {} }))
+vi.mock('./pr-comments-styles', () => ({ createPrCommentsStyles: () => ({}) }))
+vi.mock('./mobile-pr-sidebar-styles', () => ({
+  createMobilePrSidebarStyles: () => ({})
+}))
+vi.mock('../../theme/theme-context', () => ({
+  useTheme: () => ({ colors: { textSecondary: '#999' } }),
+  useThemedStyles: (factory: (colors: { textSecondary: string }) => unknown) =>
+    factory({ textSecondary: '#999' })
+}))
 vi.mock('../../theme/mobile-theme', () => ({ colors: { textSecondary: '#999' } }))
 
 function suppressReactTestRendererDeprecationWarning(): () => void {
