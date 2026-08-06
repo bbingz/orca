@@ -6,23 +6,13 @@ import { describe, expect, it } from 'vitest'
 // alias and therefore will not follow the app theme. Delete entries as you convert;
 // never add one. Empty list == migration complete.
 const UNTHEMED_COLOR_IMPORTERS: readonly string[] = [
-  'app/about.tsx',
-  'app/browser-settings.tsx',
-  'app/connection-log.tsx',
   'app/h/[hostId]/accounts.tsx',
   'app/h/[hostId]/edit.tsx',
   'app/h/[hostId]/index.tsx',
   'app/h/[hostId]/session/[worktreeId].tsx',
   'app/h/[hostId]/tasks.tsx',
   'app/index.tsx',
-  'app/native-chat-settings.tsx',
-  'app/notifications.tsx',
-  'app/pair-confirm.tsx',
-  'app/pair-scan.tsx',
-  'app/pair.tsx',
-  'app/settings.tsx',
   'app/terminal-settings.tsx',
-  'app/troubleshoot.tsx',
   'app/voice-settings.tsx',
   'src/accounts/mobile-accounts-screen-styles.ts',
   'src/agent-history/MobileAgentSessionHistoryList.tsx',
@@ -74,7 +64,6 @@ const UNTHEMED_COLOR_IMPORTERS: readonly string[] = [
   'src/components/SmartWorkspaceSourceField.tsx',
   'src/components/SmartWorkspaceSourceRow.tsx',
   'src/components/StatusDot.tsx',
-  'src/components/TerminalShortcutSettings.tsx',
   'src/components/TextInputModal.tsx',
   'src/components/VoiceModelList.tsx',
   'src/components/WorkspaceDetailPlaceholder.tsx',
@@ -113,7 +102,6 @@ const UNTHEMED_COLOR_IMPORTERS: readonly string[] = [
   'src/components/pr-sidebar/pr-create-empty-state-styles.ts',
   'src/components/pr-sidebar/pr-sidebar-status-color.ts',
   'src/components/smart-workspace-source-drawer-styles.ts',
-  'src/diagnostics/troubleshoot-common-issues.tsx',
   'src/files/MobileFileExplorerPanel.tsx',
   'src/files/MobileFileMarkdownPreview.tsx',
   'src/files/MobileFilePreviewBody.tsx',
@@ -121,8 +109,6 @@ const UNTHEMED_COLOR_IMPORTERS: readonly string[] = [
   'src/files/mobile-file-explorer-row.tsx',
   'src/files/mobile-file-explorer-styles.ts',
   'src/files/mobile-file-preview-styles.ts',
-  'src/onboarding/MobileOnboardingPage.tsx',
-  'src/onboarding/mobile-onboarding-styles.ts',
   'src/session/MobileAgentWorkingIndicator.tsx',
   'src/session/MobileNativeChatAsk.tsx',
   'src/session/MobileNativeChatComposer.tsx',
@@ -166,9 +152,8 @@ const UNTHEMED_COLOR_IMPORTERS: readonly string[] = [
   'src/terminal/terminal-webview-frame-styles.ts',
   'src/terminal/terminal-webview-html.ts',
   'src/terminal/terminal-webview-theme-injected.ts',
-  'src/worktree/host-workspace-list-states.tsx'
+  'src/worktree/host-workspace-list-states.tsx',
 ]
-
 const MOBILE_ROOT = path.resolve(__dirname, '../..')
 // Matches any relative path ending in mobile-theme (…/theme/mobile-theme or ./mobile-theme).
 const BARE_COLORS_IMPORT = /import\s*\{[^}]*\bcolors\b[^}]*\}\s*from\s*['"][^'"]*mobile-theme['"]/
