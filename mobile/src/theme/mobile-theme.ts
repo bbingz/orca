@@ -12,6 +12,13 @@ export const darkColors = {
   textSecondary: '#a1a1a1',
   textMuted: '#8c8c8c',
 
+  // Home stat tiles: dark-panel wash over bgBase. Kept as its own token so light
+  // can mirror the construction without reusing bgPanel (which would be opaque).
+  statTileSurface: 'rgba(26,26,26,0.6)',
+
+  // Secondary ink on a textPrimary-filled surface (selected modifier chip).
+  onInvertedMuted: 'rgba(10,10,10,0.5)',
+
   // Crisp near-white surface for the single primary action on a screen (the
   // worktree FAB). Brighter than textPrimary so it reads as a solid button, not
   // disabled chrome, while staying monochrome (STYLEGUIDE: color is for state).
@@ -21,6 +28,9 @@ export const darkColors = {
   // NewWorkspaceFab already rendered, so this is a rename, not a repaint.
   surfaceBrightPressed: '#e0e0e0',
 
+  // Subtle white-alpha well (home icon wells). Dark keeps the historic value.
+  surfaceFaint: 'rgba(255,255,255,0.04)',
+
   accentBlue: '#3b82f6',
   // Text/icon color on a filled accent (accentBlue) button, where the muted
   // textPrimary would lack contrast against the saturated fill.
@@ -29,6 +39,9 @@ export const darkColors = {
   statusGreen: '#22c55e',
   statusAmber: '#f59e0b',
   statusRed: '#ef4444',
+
+  // Text/icon on a statusRed fill — always white.
+  onStatusRed: '#ffffff',
   // Merge CTA fill + its on-fill text, mirroring the desktop ChecksPanel's
   // bg-green-600 "Squash and merge" button (green-600 / white).
   mergeGreen: '#16a34a',
@@ -69,8 +82,13 @@ export const lightColors: ThemeColors = {
   // MobileAgentIcon.tsx:77 concatenates an alpha suffix onto it.
   textMuted: '#858585',
 
+  statTileSurface: 'rgba(0,0,0,0.04)', // composites to bgPanel over bgBase
+  // textPrimary fill, ~5.4:1 instead of the 1:1 the dark literal would give here.
+  onInvertedMuted: 'rgba(255,255,255,0.5)',
+
   surfaceBright: '#171717', // --primary :140 — the single affirmative-action fill; inverts
   surfaceBrightPressed: '#2e2e2e',
+  surfaceFaint: 'rgba(0,0,0,0.04)',
 
   // blue-700: desktop steps its blue accent two ramp stops darker in light
   // (--terminal-pane-locate, main.css:239 -> :153). blue-600 would fail AA on the
@@ -84,6 +102,7 @@ export const lightColors: ThemeColors = {
   // ~5:1-on-bgBase weight as statusGreen/statusRed so the trio reads as one family.
   statusAmber: '#b45309',
   statusRed: '#e40014', // --destructive :148
+  onStatusRed: '#ffffff',
   // Fixed: desktop renders the merge CTA bg-green-600/text-white with no dark: variant.
   mergeGreen: '#16a34a',
   onMergeGreen: '#ffffff',

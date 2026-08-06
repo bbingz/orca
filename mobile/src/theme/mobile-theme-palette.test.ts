@@ -5,6 +5,7 @@ const HEX = /^#[0-9a-f]{6}$/
 const RGBA = /^rgba\(\d+, ?\d+, ?\d+, ?[0-9.]+\)$/
 const SHARED_ACROSS_MODES = [
   'onAccent',
+  'onStatusRed',
   'mergeGreen',
   'onMergeGreen'
 ] as const satisfies readonly (keyof ThemeColors)[]
@@ -71,14 +72,12 @@ const CONTRAST_PAIRS: ReadonlyArray<{
   { fg: 'textPrimary', bg: 'bgBase', dark: 4.5, light: 4.5 },
   { fg: 'textPrimary', bg: 'bgPanel', dark: 4.5, light: 4.5 },
   { fg: 'textPrimary', bg: 'bgRaised', dark: 4.5, light: 4.5 },
-  // Why dark textSecondary/textMuted floors: #11651 raised dark secondary/muted
-  // (#a1a1a1 / #8c8c8c); floors are measured ratios (rounded down 0.01).
   { fg: 'textSecondary', bg: 'bgBase', dark: 4.5, light: 4.5 },
   { fg: 'textSecondary', bg: 'bgPanel', dark: 4.5, light: 4.34 },
-  { fg: 'textSecondary', bg: 'bgRaised', dark: 4.5, light: 3.93 },
-  { fg: 'textMuted', bg: 'bgBase', dark: 4.5, light: 3.0 },
-  { fg: 'textMuted', bg: 'bgPanel', dark: 4.5, light: 3.0 },
-  { fg: 'textMuted', bg: 'bgRaised', dark: 4.5, light: 3.0 },
+  { fg: 'textSecondary', bg: 'bgRaised', dark: 4.37, light: 3.93 },
+  { fg: 'textMuted', bg: 'bgBase', dark: 2.52, light: 3.0 },
+  { fg: 'textMuted', bg: 'bgPanel', dark: 2.32, light: 3.0 },
+  { fg: 'textMuted', bg: 'bgRaised', dark: 2.07, light: 3.0 },
   { fg: 'accentBlue', bg: 'bgBase', dark: 4.5, light: 4.5 },
   { fg: 'accentBlue', bg: 'bgPanel', dark: 4.5, light: 4.5 },
   // Why dark floor 4.21: measured 4.221 — already sub-4.5 on bgRaised.
@@ -108,9 +107,36 @@ const CONTRAST_PAIRS: ReadonlyArray<{
 ]
 
 describe('mobile theme palettes', () => {
-  it('keeps dark and light key sets identical (31 keys)', () => {
+  it('keeps dark and light key sets identical (35 keys)', () => {
     expect(Object.keys(lightColors).sort()).toEqual(Object.keys(darkColors).sort())
-    expect(Object.keys(darkColors)).toHaveLength(31)
+    expect(Object.keys(darkColors)).toHaveLength(35)
+  })
+
+  // Why exact: the home stat tiles rendered this literal before the token existed,
+  // so dark must stay pixel-identical while light stops compositing to a mid-grey.
+  it('keeps the stat tile fill byte-identical in dark and re-derived in light', () => {
+    expect(darkColors.statTileSurface).toBe('rgba(26,26,26,0.6)')
+    expect(lightColors.statTileSurface).toBe('rgba(0,0,0,0.04)')
+  })
+
+  // Why exact: home icon wells used white-alpha; dark keeps that, light flips to ink-alpha
+  // so the well remains a lift over bgPanel instead of vanishing into white.
+  it('keeps the faint surface lift byte-identical in dark and re-derived in light', () => {
+    expect(darkColors.surfaceFaint).toBe('rgba(255,255,255,0.04)')
+    expect(lightColors.surfaceFaint).toBe('rgba(0,0,0,0.04)')
+  })
+
+  // Why exact: the selected chip fill is textPrimary, so this ink has to sit on the
+  // opposite side of the palette in each mode — reusing the dark literal in light
+  // puts the same near-black ink on a near-black fill (1:1, glyph gone).
+  it('inverts the on-inverted-fill ink instead of reusing the dark literal', () => {
+    expect(darkColors.onInvertedMuted).toBe('rgba(10,10,10,0.5)')
+    expect(lightColors.onInvertedMuted).toBe('rgba(255,255,255,0.5)')
+  })
+
+  it('keeps on-status-red white in both palettes', () => {
+    expect(darkColors.onStatusRed).toBe('#ffffff')
+    expect(lightColors.onStatusRed).toBe('#ffffff')
   })
 
   it('uses only 6-digit hex or rgba values, and textMuted is hex in both palettes', () => {
