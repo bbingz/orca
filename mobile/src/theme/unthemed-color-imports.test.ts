@@ -133,7 +133,9 @@ const UNTHEMED_COLOR_IMPORTERS: readonly string[] = [
   'src/source-control/mobile-source-control-styles.ts',
   'src/terminal/terminal-webview-html.ts',
   'src/worktree/host-workspace-list-states.tsx',
-]const MOBILE_ROOT = path.resolve(__dirname, '../..')
+]
+
+const MOBILE_ROOT = path.resolve(__dirname, '../..')
 // Matches any relative path ending in mobile-theme (…/theme/mobile-theme or ./mobile-theme).
 const BARE_COLORS_IMPORT = /import\s*\{[^}]*\bcolors\b[^}]*\}\s*from\s*['"][^'"]*mobile-theme['"]/
 const INLINE_THEMED_STYLES = /useThemedStyles\s*\(\s*(?:\([^)]*\)|[$A-Z_a-z][$\w]*)\s*=>/
