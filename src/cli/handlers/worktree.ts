@@ -38,6 +38,7 @@ import {
   resolveCreateParentSelector
 } from './worktree-create-parent-selector'
 import { getOptionalLinearIssueLinkFlag } from './worktree-linear-issue-link'
+import { resolveCliWorktreeCreateBranchNameOverride } from './worktree-create-branch-override'
 
 function assertParentWorktreeFlagsCompatible(flags: Map<string, string | boolean>): void {
   if (flags.has('parent-worktree') && flags.get('no-parent') === true) {
@@ -150,6 +151,22 @@ async function getCreateRepoSelector(
   )
 }
 
+/** Folder workspaces have no git branch; reject explicit --branch before create. */
+async function assertBranchFlagSupportedForRepo(
+  client: Parameters<CommandHandler>[0]['client'],
+  repoSelector: string
+): Promise<void> {
+  const result = await client.call<{ repo: { kind?: string } }>('repo.show', {
+    repo: repoSelector
+  })
+  if (result.result.repo.kind === 'folder') {
+    throw new RuntimeClientError(
+      'invalid_argument',
+      '--branch is only supported for git repositories, not folder workspaces.'
+    )
+  }
+}
+
 export const WORKTREE_HANDLERS: Record<string, CommandHandler> = {
   'worktree ps': async ({ flags, client, json }) => {
     const result = await client.call<WithAnnotatedHostScope<RuntimeWorktreePsResult>>(
@@ -218,12 +235,23 @@ export const WORKTREE_HANDLERS: Record<string, CommandHandler> = {
     const linearIssueLink = getOptionalLinearIssueLinkFlag(flags, 'linear-issue')
     const activate = flags.get('activate') === true || flags.get('run-hooks') === true
     const name = getRequiredStringFlag(flags, 'name')
+    // Why: --branch is optional but when present must have a value (not --branch alone).
+    const explicitBranch = getPresentStringFlag(flags, 'branch')
+    const repo = await getCreateRepoSelector(flags, cwdParentWorktree, client)
+    const branchNameOverride = resolveCliWorktreeCreateBranchNameOverride({
+      name,
+      branch: explicitBranch
+    })
+    if (explicitBranch) {
+      await assertBranchFlagSupportedForRepo(client, repo)
+    }
     const result = await client.call<RuntimeWorktreeCreateResult>('worktree.create', {
-      repo: await getCreateRepoSelector(flags, cwdParentWorktree, client),
+      repo,
       name,
       displayName: name,
       displayNameKind: 'user',
       baseBranch: getOptionalStringFlag(flags, 'base-branch'),
+      ...(branchNameOverride ? { branchNameOverride } : {}),
       linkedIssue: getOptionalNumberFlag(flags, 'issue'),
       ...linearIssueLink,
       comment: getOptionalStringFlag(flags, 'comment'),
