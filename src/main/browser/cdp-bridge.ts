@@ -177,7 +177,8 @@ export class CdpBridge {
       const refSender = this.senderForRef(guest, node)
 
       await this.scrollIntoView(refSender, node.backendDOMNodeId)
-      const localCenter = await this.getElementCenter(refSender, node.backendDOMNodeId)
+      await this.assertElementInteractable(refSender, node.backendDOMNodeId, element)
+      const localCenter = await this.getElementCenter(refSender, node.backendDOMNodeId, element)
       const { cx, cy } = await this.getPageCoordinates(guest, node, localCenter.cx, localCenter.cy)
 
       // Why: mouseMoved fires mouseenter/mouseover so sites reveal hover-dependent menus/targets before the click lands.
@@ -210,7 +211,8 @@ export class CdpBridge {
       const node = await this.resolveRef(guest, sender, element)
       const refSender = this.senderForRef(guest, node)
       await this.scrollIntoView(refSender, node.backendDOMNodeId)
-      const localCenter = await this.getElementCenter(refSender, node.backendDOMNodeId)
+      await this.assertElementInteractable(refSender, node.backendDOMNodeId, element)
+      const localCenter = await this.getElementCenter(refSender, node.backendDOMNodeId, element)
       const { cx, cy } = await this.getPageCoordinates(guest, node, localCenter.cx, localCenter.cy)
 
       await sender('Input.dispatchMouseEvent', { type: 'mouseMoved', x: cx, y: cy })
@@ -231,9 +233,15 @@ export class CdpBridge {
       const toSender = this.senderForRef(guest, toNode)
 
       await this.scrollIntoView(fromSender, fromNode.backendDOMNodeId)
-      const fromLocal = await this.getElementCenter(fromSender, fromNode.backendDOMNodeId)
+      await this.assertElementInteractable(fromSender, fromNode.backendDOMNodeId, fromElement)
+      const fromLocal = await this.getElementCenter(
+        fromSender,
+        fromNode.backendDOMNodeId,
+        fromElement
+      )
       const from = await this.getPageCoordinates(guest, fromNode, fromLocal.cx, fromLocal.cy)
-      const toLocal = await this.getElementCenter(toSender, toNode.backendDOMNodeId)
+      await this.assertElementInteractable(toSender, toNode.backendDOMNodeId, toElement)
+      const toLocal = await this.getElementCenter(toSender, toNode.backendDOMNodeId, toElement)
       const to = await this.getPageCoordinates(guest, toNode, toLocal.cx, toLocal.cy)
 
       // Why: interpolate the drag so intermediate elements fire dragenter/dragover, which many drag-and-drop libs require.
@@ -310,6 +318,7 @@ export class CdpBridge {
 
       const node = await this.resolveRef(guest, sender, element)
       const refSender = this.senderForRef(guest, node)
+      await this.assertElementInteractable(refSender, node.backendDOMNodeId, element)
 
       await refSender('DOM.focus', { backendNodeId: node.backendDOMNodeId })
 
@@ -458,7 +467,8 @@ export class CdpBridge {
 
       if (currentState.value !== checked) {
         await this.scrollIntoView(refSender, node.backendDOMNodeId)
-        const localCenter = await this.getElementCenter(refSender, node.backendDOMNodeId)
+        await this.assertElementInteractable(refSender, node.backendDOMNodeId, element)
+        const localCenter = await this.getElementCenter(refSender, node.backendDOMNodeId, element)
         const { cx, cy } = await this.getPageCoordinates(
           guest,
           node,
@@ -1406,14 +1416,80 @@ export class CdpBridge {
     })
   }
 
+  /**
+   * Reject disabled/aria-disabled controls before synthetic input so agents get a
+   * specific recovery code instead of a silent miss or generic CDP failure (#13242).
+   */
+  private async assertElementInteractable(
+    sender: CdpCommandSender,
+    backendNodeId: number,
+    ref: string
+  ): Promise<void> {
+    const { nodeId } = (await sender('DOM.requestNode', { backendNodeId })) as { nodeId: number }
+    const { object } = (await sender('DOM.resolveNode', { nodeId })) as {
+      object: { objectId: string }
+    }
+    const { result } = (await sender('Runtime.callFunctionOn', {
+      objectId: object.objectId,
+      functionDeclaration: `function() {
+        if (!this || typeof this !== 'object') return 'missing';
+        if (this.disabled === true) return 'disabled';
+        if (typeof this.getAttribute === 'function' && this.getAttribute('aria-disabled') === 'true') {
+          return 'disabled';
+        }
+        if (this.hidden === true || this.type === 'hidden') return 'hidden';
+        return '';
+      }`,
+      returnByValue: true
+    })) as { result?: { value?: unknown } }
+    const reason = typeof result?.value === 'string' ? result.value : ''
+    if (reason === 'disabled') {
+      throw new BrowserError(
+        'browser_element_not_interactable',
+        `Element ${ref} is disabled and cannot be interacted with.`
+      )
+    }
+    if (reason === 'hidden' || reason === 'missing') {
+      throw new BrowserError(
+        'browser_element_not_interactable',
+        `Element ${ref} is not visible for interaction. Re-snapshot or scroll it into view.`
+      )
+    }
+  }
+
   private async getElementCenter(
     sender: CdpCommandSender,
-    backendNodeId: number
+    backendNodeId: number,
+    ref?: string
   ): Promise<{ cx: number; cy: number }> {
-    const { model } = (await sender('DOM.getBoxModel', { backendNodeId })) as {
-      model: { content: number[] }
+    // Why: no layout box means the node is display:none, not rendered, or detached
+    // from the visual tree — the declared browser_element_not_interactable code.
+    let model: { content: number[] } | undefined
+    try {
+      ;({ model } = (await sender('DOM.getBoxModel', { backendNodeId })) as {
+        model: { content: number[] }
+      })
+    } catch {
+      throw new BrowserError(
+        'browser_element_not_interactable',
+        `Element ${ref ?? 'ref'} has no layout box (hidden or not rendered). Re-snapshot and pick a visible control.`
+      )
+    }
+    if (!model?.content || model.content.length < 6) {
+      throw new BrowserError(
+        'browser_element_not_interactable',
+        `Element ${ref ?? 'ref'} has no usable layout box. Re-snapshot and pick a visible control.`
+      )
     }
     const [x1, y1, , , x3, y3] = model.content
+    const width = Math.abs(x3 - x1)
+    const height = Math.abs(y3 - y1)
+    if (width < 0.5 || height < 0.5) {
+      throw new BrowserError(
+        'browser_element_not_interactable',
+        `Element ${ref ?? 'ref'} has zero size and cannot be interacted with.`
+      )
+    }
     return { cx: (x1 + x3) / 2, cy: (y1 + y3) / 2 }
   }
 
