@@ -261,6 +261,14 @@ function classifyErrorCode(message: string): string {
   if (/unknown ref|ref not found|element not found: @e/i.test(message)) {
     return 'browser_stale_ref'
   }
+  // Why: match CDP/Playwright-style interactability failures to the declared runtime code (#13242).
+  if (
+    /not interactable|not visible|is not enabled|element is disabled|zero size|no layout box|cannot be interacted/i.test(
+      message
+    )
+  ) {
+    return 'browser_element_not_interactable'
+  }
   return 'browser_error'
 }
 

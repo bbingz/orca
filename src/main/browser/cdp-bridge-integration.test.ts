@@ -395,6 +395,48 @@ describe('Browser automation pipeline (integration)', () => {
     expect((res.error as { code: string }).code).toBe('browser_ref_not_found')
   })
 
+  it('returns browser_element_not_interactable when the element has no layout box', async () => {
+    await rpc('browser.snapshot')
+    const sendCommand = activeGuestHarness.guest.debugger.sendCommand as ReturnType<typeof vi.fn>
+    const previous = sendCommand.getMockImplementation()
+    sendCommand.mockImplementation(async (method: string, params?: Record<string, unknown>) => {
+      if (method === 'DOM.getBoxModel') {
+        throw new Error('Could not compute box model')
+      }
+      if (previous) {
+        return previous(method, params)
+      }
+      return {}
+    })
+
+    const res = await rpc('browser.click', { element: '@e1' })
+    expect(res.ok).toBe(false)
+    expect((res.error as { code: string }).code).toBe('browser_element_not_interactable')
+  })
+
+  it('returns browser_element_not_interactable when the element is disabled', async () => {
+    await rpc('browser.snapshot')
+    const sendCommand = activeGuestHarness.guest.debugger.sendCommand as ReturnType<typeof vi.fn>
+    const previous = sendCommand.getMockImplementation()
+    sendCommand.mockImplementation(async (method: string, params?: Record<string, unknown>) => {
+      if (method === 'Runtime.callFunctionOn') {
+        const decl = (params as { functionDeclaration?: string })?.functionDeclaration ?? ''
+        if (decl.includes('aria-disabled') || decl.includes('this.disabled')) {
+          return { result: { value: 'disabled' } }
+        }
+      }
+      if (previous) {
+        return previous(method, params)
+      }
+      return {}
+    })
+
+    const res = await rpc('browser.click', { element: '@e1' })
+    expect(res.ok).toBe(false)
+    expect((res.error as { code: string }).code).toBe('browser_element_not_interactable')
+    expect((res.error as { message: string }).message).toMatch(/disabled/i)
+  })
+
   // ── Navigation ──
 
   it('navigates to a URL and invalidates refs', async () => {
