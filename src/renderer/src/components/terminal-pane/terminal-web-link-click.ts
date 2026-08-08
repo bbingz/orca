@@ -7,6 +7,7 @@ import {
   type TerminalLinkRoutingPreferenceRequester
 } from './terminal-url-link-hit-testing'
 import type { HttpLinkSourceOwner } from '@/lib/http-link-routing'
+import { classifyExternalAppUrl } from '../../../../shared/external-app-url'
 
 type TerminalWebLinkClickDeps = Pick<
   LinkHandlerDeps,
@@ -24,6 +25,15 @@ export function handleTerminalWebLinkClick(
 ): boolean {
   if (!event || !isTerminalHttpLinkActivation(event)) {
     return false
+  }
+
+  // Why: custom app schemes skip in-app browser routing; main prompts then openExternal (#13225).
+  const classified = classifyExternalAppUrl(url)
+  if (classified.ok && classified.kind === 'custom') {
+    event.preventDefault()
+    void window.api.shell.openUrl(classified.url).catch(() => undefined)
+    deps.terminal?.clearSelection()
+    return true
   }
 
   let handled: boolean
