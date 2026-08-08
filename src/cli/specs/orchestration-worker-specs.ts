@@ -61,7 +61,12 @@ export const ORCHESTRATION_WORKER_COMMAND_SPECS: CommandSpec[] = [
     usage:
       'orca orchestration worker-stop --dispatch <dispatch_id> [--retry-request <id>] [--json]',
     allowedFlags: [...GLOBAL_FLAGS, 'dispatch', 'retry-request'],
-    notes: ['Never deletes the worktree, setup terminal, configured tabs, or unrelated processes.']
+    notes: [
+      'Cancels an active Dispatch. When the recorded agent process is still the exact live worker, Orca closes that terminal and returns processAction closed_agent_terminal — do not also run terminal close.',
+      'processAction is the close contract: closed_agent_terminal means the pane was closed; none means no close was attempted (already settled, identity changed, or process already gone); unknown means the close attempt did not complete.',
+      'Only stop_unknown exits 1. Already-settled or successful stopped receipts exit 0.',
+      'Never deletes the worktree, setup terminal, configured tabs, or unrelated processes. Prefer worker-abandon when you must fence without touching the process.'
+    ]
   },
   {
     path: ['orchestration', 'worker-abandon'],
