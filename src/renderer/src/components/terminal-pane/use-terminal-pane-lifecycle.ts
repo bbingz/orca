@@ -32,7 +32,11 @@ import {
   getTerminalUrlOpenHint,
   installFilePathLinkClickFallback
 } from './terminal-link-handlers'
-import { terminalUrlOpenHintOptionsFor } from './terminal-link-open-hints'
+import {
+  getTerminalCustomAppSchemeOpenHint,
+  terminalUrlOpenHintOptionsFor
+} from './terminal-link-open-hints'
+import { classifyExternalAppUrl } from '../../../../shared/external-app-url'
 import { createTerminalHandleLinkProvider } from './terminal-handle-links'
 import type { LinkHandlerDeps } from './terminal-link-handlers'
 import { handleOscLink } from './terminal-osc-link-routing'
@@ -210,6 +214,11 @@ async function formatTerminalUrlTooltip(
   openLinkHint: string,
   sourceOwner: HttpLinkSourceOwner
 ): Promise<string | null> {
+  const classified = classifyExternalAppUrl(url)
+  if (classified.ok && classified.kind === 'custom') {
+    // Why: custom schemes never use Orca/browser routing; avoid HTTP-style hints (#13225).
+    return `${url} (${getTerminalCustomAppSchemeOpenHint()})`
+  }
   const labeledUrl = await resolveLocalhostHttpLinkDisplayUrl(url, sourceOwner)
   if (!labeledUrl) {
     return null
