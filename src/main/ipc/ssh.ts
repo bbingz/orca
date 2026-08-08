@@ -151,7 +151,7 @@ export async function removeRegisteredSshTarget(targetId: string): Promise<void>
 
 // One session per SSH target owns the whole relay lifecycle (mux, providers, abort controller, state machine).
 const activeSessions = new Map<string, SshRelaySession>()
-const targetLifecycleInFlight = new Map<string, Promise<void>>()
+const targetLifecycleInFlight = new Map<string, Promise<unknown>>()
 
 export function getActiveSshAiVaultHostInfo(targetId: string): SshRelayAiVaultHostInfo | null {
   if (isRuntimeOwnedSshTargetId(targetId)) {
@@ -185,15 +185,15 @@ export async function requestActiveSshAiVaultSessionList(
   return session.requestAiVaultSessionList(params, options)
 }
 
-function runTargetLifecycle(targetId: string, operation: () => Promise<void>): Promise<void> {
+function runTargetLifecycle<T>(targetId: string, operation: () => Promise<T>): Promise<T> {
   const prior = targetLifecycleInFlight.get(targetId)
   const operationPromise = (async () => {
     if (prior) {
       await prior.catch(() => undefined)
     }
-    await operation()
+    return await operation()
   })()
-  let trackedPromise!: Promise<void>
+  let trackedPromise!: Promise<T>
   trackedPromise = operationPromise.finally(() => {
     if (targetLifecycleInFlight.get(targetId) === trackedPromise) {
       targetLifecycleInFlight.delete(targetId)
@@ -1277,7 +1277,7 @@ export function registerSshHandlers(
 
   ipcMain.handle('ssh:terminateSessions', async (_event, args: { targetId: string }) => {
     invalidateConnectAttempt(args.targetId)
-    await runTargetLifecycle(args.targetId, async () => {
+    return await runTargetLifecycle(args.targetId, async () => {
       const provider = getSshPtyProvider(args.targetId)
       const leases = persistedStore!.getSshRemotePtyLeases(args.targetId)
       const ptyIdsByRelayId = new Map<string, string>()
@@ -1314,14 +1314,22 @@ export function registerSshHandlers(
           `${SSH_TERMINATE_RECONNECT_REQUIRED}: SSH relay is not connected; reconnect before terminating remote sessions.`
         )
       }
-      const shutdownResults = provider
-        ? await Promise.allSettled(
-            ptyIds.map(({ appPtyId }) =>
-              provider.shutdown(appPtyId, { immediate: true, keepHistory: false })
-            )
-          )
-        : []
+      // Why (#12661): expired-only offline terminate used to look successful while remote shells
+      // stayed live. Still tear down local transport, but report abandonedUnreachable.
+      if (!provider) {
+        await teardownSshTargetTransport(args.targetId, (session) => session.disposeAndPersist())
+        return {
+          remoteSessionsTerminated: 0,
+          abandonedUnreachable: ptyIds.length
+        }
+      }
+      const shutdownResults = await Promise.allSettled(
+        ptyIds.map(({ appPtyId }) =>
+          provider.shutdown(appPtyId, { immediate: true, keepHistory: false })
+        )
+      )
       const shutdownFailures: string[] = []
+      let remoteSessionsTerminated = 0
       for (const [index, result] of shutdownResults.entries()) {
         const { appPtyId, relayPtyId } = ptyIds[index]
         if (result.status !== 'fulfilled' && !isSshPtyNotFoundError(result.reason)) {
@@ -1330,6 +1338,7 @@ export function registerSshHandlers(
           )
           continue
         }
+        remoteSessionsTerminated += 1
         clearProviderPtyState(appPtyId)
         deletePtyOwnership(appPtyId)
         persistedStore!.markSshRemotePtyLease(args.targetId, relayPtyId, 'terminated')
@@ -1339,6 +1348,10 @@ export function registerSshHandlers(
         throw new Error(`Failed to terminate SSH host sessions: ${shutdownFailures.join('; ')}`)
       }
       await teardownSshTargetTransport(args.targetId, (session) => session.disposeAndPersist())
+      return {
+        remoteSessionsTerminated,
+        abandonedUnreachable: 0
+      }
     })
   })
 
