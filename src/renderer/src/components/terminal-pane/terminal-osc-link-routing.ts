@@ -1,5 +1,6 @@
 import { resolveTerminalFileLinkText } from '@/lib/terminal-links'
 import { isWindowsAbsolutePathLike } from '../../../../shared/cross-platform-path'
+import { classifyExternalAppUrl } from '../../../../shared/external-app-url'
 import type { LinkHandlerDeps } from './terminal-link-handlers'
 import { resolveTerminalFileUrlTarget } from '../../../../shared/terminal-file-url-target'
 import { openDetectedFilePath } from './terminal-file-open-routing'
@@ -117,6 +118,13 @@ export function handleOscLink(
       ...deps,
       openWithSystemDefault: Boolean(event?.shiftKey)
     })
+    return true
+  }
+
+  // Why: OSC 8 custom schemes must match plain-text WebLinks: confirm then openExternal (#13225).
+  const classified = classifyExternalAppUrl(rawText)
+  if (classified.ok && classified.kind === 'custom') {
+    void window.api.shell.openUrl(classified.url).catch(() => undefined)
     return true
   }
   return false
