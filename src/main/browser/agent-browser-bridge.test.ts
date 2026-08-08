@@ -441,6 +441,22 @@ describe('AgentBrowserBridge', () => {
     await expect(bridge.click('@e1')).rejects.toThrow('Element not found')
   })
 
+  it.each([
+    'Element is not interactable',
+    'Element is not visible',
+    'Element is not enabled',
+    'element is disabled',
+    'Element has zero size',
+    'Element has no layout box',
+    'cannot be interacted with'
+  ])('maps interactability message %j to browser_element_not_interactable', async (message) => {
+    failWith(message)
+    await expect(bridge.click('@e1')).rejects.toMatchObject({
+      code: 'browser_element_not_interactable',
+      message
+    })
+  })
+
   it('keeps CDP discovery failures generic while the tab session is still live', async () => {
     failWith(CDP_DISCOVERY_FAILURE)
     await expect(bridge.snapshot()).rejects.toMatchObject({
