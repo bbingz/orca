@@ -1469,7 +1469,12 @@ export class CdpBridge {
       ;({ model } = (await sender('DOM.getBoxModel', { backendNodeId })) as {
         model: { content: number[] }
       })
-    } catch {
+    } catch (error) {
+      // Why: CDP timeouts/transport failures are browser_cdp_error — do not steer agents
+      // toward re-snapshot recovery as if the control were merely hidden.
+      if (error instanceof BrowserError) {
+        throw error
+      }
       throw new BrowserError(
         'browser_element_not_interactable',
         `Element ${ref ?? 'ref'} has no layout box (hidden or not rendered). Re-snapshot and pick a visible control.`

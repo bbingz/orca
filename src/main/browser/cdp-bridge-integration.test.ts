@@ -23,7 +23,7 @@ vi.mock('../git/worktree', () => ({
 }))
 
 import { BrowserManager } from './browser-manager'
-import { CdpBridge } from './cdp-bridge'
+import { BrowserError, CdpBridge } from './cdp-bridge'
 import { BROWSER_TEXT_INSERT_CHUNK_BYTES } from './browser-text-insertion'
 import { OrcaRuntimeService } from '../runtime/orca-runtime'
 import { OrcaRuntimeRpcServer } from '../runtime/runtime-rpc'
@@ -412,6 +412,25 @@ describe('Browser automation pipeline (integration)', () => {
     const res = await rpc('browser.click', { element: '@e1' })
     expect(res.ok).toBe(false)
     expect((res.error as { code: string }).code).toBe('browser_element_not_interactable')
+  })
+
+  it('preserves browser_cdp_error from getBoxModel transport failures', async () => {
+    await rpc('browser.snapshot')
+    const sendCommand = activeGuestHarness.guest.debugger.sendCommand as ReturnType<typeof vi.fn>
+    const previous = sendCommand.getMockImplementation()
+    sendCommand.mockImplementation(async (method: string, params?: Record<string, unknown>) => {
+      if (method === 'DOM.getBoxModel') {
+        throw new BrowserError('browser_cdp_error', 'CDP command "DOM.getBoxModel" timed out')
+      }
+      if (previous) {
+        return previous(method, params)
+      }
+      return {}
+    })
+
+    const res = await rpc('browser.click', { element: '@e1' })
+    expect(res.ok).toBe(false)
+    expect((res.error as { code: string }).code).toBe('browser_cdp_error')
   })
 
   it('returns browser_element_not_interactable when the element is disabled', async () => {
