@@ -40,23 +40,24 @@ type CapturedInterruptBaseline = {
 
 function requiresDoubleEscapeForAgent(
   agentType: AgentStatusEntry['agentType'],
-  intent: AgentInterruptInputIntent
+  intent: AgentInterruptInputIntent,
+  state?: AgentStatusEntry['state']
 ): boolean {
-  // Why: Claude's /btw composer and similar TUI surfaces cancel on the first
-  // Escape without stopping the turn; only a second Escape is interrupt (#13547).
-  return (
-    (agentType === 'opencode' || agentType === 'copilot' || agentType === 'claude') &&
-    intent === 'plain-escape'
-  )
+  if (intent !== 'plain-escape') {
+    return false
+  }
+  if (agentType === 'opencode' || agentType === 'copilot') {
+    return true
+  }
+  // Why: Claude /btw cancels on first Escape only while working. AskUserQuestion
+  // waiting must stay single-Escape so main can inferQuestionAnswered (#13547).
+  return agentType === 'claude' && state === 'working'
 }
 
 function shouldFlushInterruptImmediately(
-  baseline: Pick<CapturedInterruptBaseline, 'agentType' | 'intent'>
+  baseline: Pick<CapturedInterruptBaseline, 'agentType' | 'intent' | 'inputCount'>
 ): boolean {
-  return (
-    requiresDoubleEscapeForAgent(baseline.agentType, baseline.intent) ||
-    baseline.agentType === 'gemini'
-  )
+  return baseline.inputCount === 2 || baseline.agentType === 'gemini'
 }
 
 function shouldIgnoreInterruptIntent(
@@ -242,7 +243,7 @@ export function createAgentInterruptInference({
         clearPending()
         return
       }
-      if (requiresDoubleEscapeForAgent(baseline.agentType, intent)) {
+      if (requiresDoubleEscapeForAgent(baseline.agentType, intent, entry.state)) {
         const isSecondEscape =
           doubleEscapeBaseline !== null && isSameTurnBaseline(doubleEscapeBaseline, baseline)
         doubleEscapeBaseline = baseline
