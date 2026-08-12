@@ -1,6 +1,11 @@
 import type { GitStatusEntry, GitStatusResult } from '../../shared/git-status-types'
 import type { RuntimeFileOpenResult, RuntimeWorktreeRecord } from '../../shared/runtime-types'
-import { isRuntimePathAbsolute, relativePathInsideRoot } from '../../shared/cross-platform-path'
+import {
+  isRuntimePathAbsolute,
+  isWindowsAbsolutePathLike,
+  relativePathInsideRoot,
+  resolveRuntimePath
+} from '../../shared/cross-platform-path'
 import { isWslUncPath, parseWslUncPath, toWindowsWslPath } from '../../shared/wsl-paths'
 import type { CommandHandler, HandlerContext } from '../dispatch'
 import { getOptionalStringFlag, getRequiredStringFlag } from '../flags'
@@ -79,26 +84,52 @@ async function resolveFilePath(
   worktree: string,
   path: string
 ): Promise<string> {
-  if (!isRuntimePathAbsolute(path)) {
+  // Why: plain relative paths stay on the single-RPC path. Absolute paths and
+  // parent-segment relatives need the worktree root so we can relativize or
+  // reject outside-worktree targets with an actionable message (#13949).
+  if (!isRuntimePathAbsolute(path) && !pathHasParentSegment(path)) {
     return path
   }
-  // Why: only in-worktree absolute paths should be relativized here; outside paths must reach the runtime guard unchanged.
   const result = await ctx.client.call<{ worktree: RuntimeWorktreeRecord }>('worktree.show', {
     worktree
   })
-
-  const rootPath = result.result.worktree.path
-  const relativePath = relativePathInsideRoot(
-    rootPath,
-    toWorktreeRootPathFlavor(rootPath, ctx.cwd, path)
+  const worktreePath = result.result.worktree.path
+  const candidate = resolveRuntimePath(
+    ctx.cwd,
+    toWorktreeRootPathFlavor(worktreePath, ctx.cwd, path)
   )
+  const relativePath = relativePathInsideRoot(worktreePath, candidate)
   if (relativePath === '') {
     throw new RuntimeClientError(
       'invalid_argument',
       'The selected worktree root is a directory, not a file-open target.'
     )
   }
-  return relativePath ?? path
+  if (relativePath !== null) {
+    return relativePath
+  }
+  // Same-flavor outside paths get a CLI error. Cross-flavor misses (WSL UNC vs
+  // Linux spelling, SSH flavor mismatch) still reach the runtime guard.
+  const originalCandidate = resolveRuntimePath(ctx.cwd, path)
+  if (pathHasParentSegment(path) || fileOpenPathsAreComparable(worktreePath, originalCandidate)) {
+    throw new RuntimeClientError(
+      'invalid_argument',
+      `Path is outside the selected worktree (${worktreePath}). ` +
+        '`orca file open` only opens files inside a worktree; pass a path under that root or choose a different --worktree.'
+    )
+  }
+  return path
+}
+
+function fileOpenPathsAreComparable(rootPath: string, candidatePath: string): boolean {
+  const rootWindows = isWindowsAbsolutePathLike(rootPath) || isWslUncPath(rootPath)
+  const candidateWindows =
+    isWindowsAbsolutePathLike(candidatePath) || isWslUncPath(candidatePath)
+  return rootWindows === candidateWindows
+}
+
+function pathHasParentSegment(path: string): boolean {
+  return path.split(/[\\/]/).includes('..')
 }
 
 function getOpenChangedMode(flags: Map<string, string | boolean>): OpenChangedMode {
