@@ -80,6 +80,12 @@ function formatCommandFlagHelp(flag: string, commandPath: string[]): string {
   if (command === 'terminal close' && flag === 'tab') {
     return '--tab                  Close the whole tab and wait for durable persistence'
   }
+  if (command === 'terminal send' && flag === 'text') {
+    return "--text <text>          Raw PTY bytes (verbatim). Bash/Zsh ANSI-C: $'\\x1b' Escape, $'\\x15' Ctrl+U"
+  }
+  if (command === 'terminal send' && flag === 'interrupt') {
+    return '--interrupt            Append Ctrl+C (\\x03); other control sequences use --text'
+  }
   if (command === 'linear issue' && flag === 'id') {
     return '--id <id>             Linear issue key, id, or URL'
   }
