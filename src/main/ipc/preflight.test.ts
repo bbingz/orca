@@ -112,7 +112,8 @@ describe('preflight', () => {
     authenticated: false,
     account: null,
     baseUrl: null,
-    tokenConfigured: false
+    tokenConfigured: false,
+    authError: null
   }
 
   beforeEach(() => {
