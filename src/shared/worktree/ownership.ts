@@ -37,30 +37,23 @@ export function buildKnownOrcaWorkspaceLayouts(
   for (const basePath of resolveConfiguredWorktreeBasePaths(repo)) {
     layouts.push({ path: basePath, nestWorkspaces: settings.nestWorkspaces })
   }
-  if (
-    isUsableWorkspaceLayoutPath(settings.workspaceDir) &&
-    shouldIncludeWorkspaceLayout(repo, settings.workspaceDir)
-  ) {
+  if (shouldIncludeWorkspaceLayout(repo, settings.workspaceDir)) {
     layouts.push({
       path: repo
         ? resolveWorkspaceLayoutPath(repo.path, settings.workspaceDir)
         : settings.workspaceDir,
       nestWorkspaces: settings.nestWorkspaces
     })
-    appendWorkspaceLayouts(
-      layouts,
-      (settings.workspaceDirHistory ?? [])
-        .filter(
-          (layout) =>
-            isUsableWorkspaceLayoutPath(layout?.path) &&
-            shouldIncludeWorkspaceLayout(repo, layout.path)
-        )
-        .map((layout) => ({
-          ...layout,
-          path: repo ? resolveWorkspaceLayoutPath(repo.path, layout.path) : layout.path
-        }))
-    )
   }
+  appendWorkspaceLayouts(
+    layouts,
+    (settings.workspaceDirHistory ?? [])
+      .filter((layout) => shouldIncludeWorkspaceLayout(repo, layout?.path))
+      .map((layout) => ({
+        ...layout,
+        path: repo ? resolveWorkspaceLayoutPath(repo.path, layout.path) : layout.path
+      }))
+  )
 
   const wslLayouts = repo ? buildWslWorkspaceLayouts(repo.path, settings) : []
   appendWorkspaceLayouts(layouts, wslLayouts)
@@ -87,15 +80,11 @@ function appendWorkspaceLayouts(
   }
 }
 
-function isUsableWorkspaceLayoutPath(pathValue: unknown): pathValue is string {
-  return typeof pathValue === 'string' && pathValue.trim().length > 0
-}
-
 function shouldIncludeWorkspaceLayout(
   repo: Pick<Repo, 'path' | 'connectionId'> | undefined,
-  layoutPath: string
-): boolean {
-  if (!isUsableWorkspaceLayoutPath(layoutPath)) {
+  layoutPath: unknown
+): layoutPath is string {
+  if (typeof layoutPath !== 'string' || !layoutPath.trim()) {
     return false
   }
   return !repo?.connectionId || !isRuntimePathAbsoluteForRepo(repo.path, layoutPath)
@@ -115,8 +104,8 @@ function buildWslWorkspaceLayouts(
     return []
   }
   const root = `//wsl.localhost/${parsed.distro}${linuxHome}/orca/workspaces`
-  const historicalModes = (settings.workspaceDirHistory ?? []).map(
-    (layout) => layout.nestWorkspaces
+  const historicalModes = (settings.workspaceDirHistory ?? []).flatMap((layout) =>
+    typeof layout?.nestWorkspaces === 'boolean' ? [layout.nestWorkspaces] : []
   )
   const modes = [settings.nestWorkspaces, ...historicalModes]
   return [...new Set(modes)].map((nestWorkspaces) => ({ path: root, nestWorkspaces }))
