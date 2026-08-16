@@ -47,7 +47,7 @@ export class RuntimeRepositoryRegistrationController {
     if (kind === 'git') {
       // Why: marker-based isGitRepo can accept an Administrators-owned checkout while Git
       // refuses worktree scans — same zero-worktree silent import as local repos:add (#12627).
-      const accessBlocker = getLocalGitRepoAccessBlocker(path)
+      const accessBlocker = await getLocalGitRepoAccessBlocker(path)
       if (accessBlocker) {
         throw new Error(accessBlocker)
       }
@@ -60,7 +60,7 @@ export class RuntimeRepositoryRegistrationController {
     })
     if (existing) {
       if (existing.kind === 'git' || kind === 'git') {
-        const accessBlocker = getLocalGitRepoAccessBlocker(existing.path)
+        const accessBlocker = await getLocalGitRepoAccessBlocker(existing.path)
         if (accessBlocker) {
           throw new Error(accessBlocker)
         }

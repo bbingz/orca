@@ -83,7 +83,7 @@ export class RuntimeNestedRepoImport {
           continue
         }
         const importRepoPath = await importTargetResolver.resolveLocal(repoPath)
-        const accessBlocker = getLocalGitRepoAccessBlocker(importRepoPath)
+        const accessBlocker = await getLocalGitRepoAccessBlocker(importRepoPath)
         if (accessBlocker) {
           results.push({ path: repoPath, status: 'failed', error: accessBlocker })
           continue
