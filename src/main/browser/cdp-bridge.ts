@@ -177,8 +177,8 @@ export class CdpBridge {
       const refSender = this.senderForRef(guest, node)
 
       await this.scrollIntoView(refSender, node.backendDOMNodeId)
-      await this.assertElementInteractable(refSender, node.backendDOMNodeId, element)
       const localCenter = await this.getElementCenter(refSender, node.backendDOMNodeId, element)
+      await this.assertElementInteractable(refSender, node.backendDOMNodeId, element, localCenter)
       const { cx, cy } = await this.getPageCoordinates(guest, node, localCenter.cx, localCenter.cy)
 
       // Why: mouseMoved fires mouseenter/mouseover so sites reveal hover-dependent menus/targets before the click lands.
@@ -211,8 +211,8 @@ export class CdpBridge {
       const node = await this.resolveRef(guest, sender, element)
       const refSender = this.senderForRef(guest, node)
       await this.scrollIntoView(refSender, node.backendDOMNodeId)
-      await this.assertElementInteractable(refSender, node.backendDOMNodeId, element)
       const localCenter = await this.getElementCenter(refSender, node.backendDOMNodeId, element)
+      await this.assertElementInteractable(refSender, node.backendDOMNodeId, element, localCenter)
       const { cx, cy } = await this.getPageCoordinates(guest, node, localCenter.cx, localCenter.cy)
 
       await sender('Input.dispatchMouseEvent', { type: 'mouseMoved', x: cx, y: cy })
@@ -233,15 +233,20 @@ export class CdpBridge {
       const toSender = this.senderForRef(guest, toNode)
 
       await this.scrollIntoView(fromSender, fromNode.backendDOMNodeId)
-      await this.assertElementInteractable(fromSender, fromNode.backendDOMNodeId, fromElement)
       const fromLocal = await this.getElementCenter(
         fromSender,
         fromNode.backendDOMNodeId,
         fromElement
       )
+      await this.assertElementInteractable(
+        fromSender,
+        fromNode.backendDOMNodeId,
+        fromElement,
+        fromLocal
+      )
       const from = await this.getPageCoordinates(guest, fromNode, fromLocal.cx, fromLocal.cy)
-      await this.assertElementInteractable(toSender, toNode.backendDOMNodeId, toElement)
       const toLocal = await this.getElementCenter(toSender, toNode.backendDOMNodeId, toElement)
+      await this.assertElementInteractable(toSender, toNode.backendDOMNodeId, toElement, toLocal)
       const to = await this.getPageCoordinates(guest, toNode, toLocal.cx, toLocal.cy)
 
       // Why: interpolate the drag so intermediate elements fire dragenter/dragover, which many drag-and-drop libs require.
@@ -467,8 +472,8 @@ export class CdpBridge {
 
       if (currentState.value !== checked) {
         await this.scrollIntoView(refSender, node.backendDOMNodeId)
-        await this.assertElementInteractable(refSender, node.backendDOMNodeId, element)
         const localCenter = await this.getElementCenter(refSender, node.backendDOMNodeId, element)
+        await this.assertElementInteractable(refSender, node.backendDOMNodeId, element, localCenter)
         const { cx, cy } = await this.getPageCoordinates(
           guest,
           node,
@@ -1423,7 +1428,8 @@ export class CdpBridge {
   private async assertElementInteractable(
     sender: CdpCommandSender,
     backendNodeId: number,
-    ref: string
+    ref: string,
+    pointerCenter?: { cx: number; cy: number }
   ): Promise<void> {
     const { nodeId } = (await sender('DOM.requestNode', { backendNodeId })) as { nodeId: number }
     const { object } = (await sender('DOM.resolveNode', { nodeId })) as {
@@ -1431,15 +1437,25 @@ export class CdpBridge {
     }
     const { result } = (await sender('Runtime.callFunctionOn', {
       objectId: object.objectId,
-      functionDeclaration: `function() {
+      functionDeclaration: `function(cx, cy) {
         if (!this || typeof this !== 'object') return 'missing';
         if (this.disabled === true) return 'disabled';
         if (typeof this.getAttribute === 'function' && this.getAttribute('aria-disabled') === 'true') {
           return 'disabled';
         }
         if (this.hidden === true || this.type === 'hidden') return 'hidden';
+        const style = getComputedStyle(this);
+        if (style.visibility === 'hidden' || style.visibility === 'collapse') return 'hidden';
+        if (typeof cx === 'number' && typeof cy === 'number') {
+          if (style.pointerEvents === 'none') return 'pointer-blocked';
+          const hit = this.ownerDocument.elementFromPoint(cx, cy);
+          if (!hit || (hit !== this && !this.contains(hit))) return 'obscured';
+        }
         return '';
       }`,
+      arguments: pointerCenter
+        ? [{ value: pointerCenter.cx }, { value: pointerCenter.cy }]
+        : undefined,
       returnByValue: true
     })) as { result?: { value?: unknown } }
     const reason = typeof result?.value === 'string' ? result.value : ''
@@ -1453,6 +1469,12 @@ export class CdpBridge {
       throw new BrowserError(
         'browser_element_not_interactable',
         `Element ${ref} is not visible for interaction. Re-snapshot or scroll it into view.`
+      )
+    }
+    if (reason === 'pointer-blocked' || reason === 'obscured') {
+      throw new BrowserError(
+        'browser_element_not_interactable',
+        `Element ${ref} cannot receive pointer input at its center. Re-snapshot and pick an unobscured control.`
       )
     }
   }

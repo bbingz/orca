@@ -398,7 +398,9 @@ describe('Browser automation pipeline (integration)', () => {
   it('returns browser_element_not_interactable when the element has no layout box', async () => {
     await rpc('browser.snapshot')
     const sendCommand = activeGuestHarness.guest.debugger.sendCommand as ReturnType<typeof vi.fn>
-    const previous = sendCommand.getMockImplementation()
+    const previous = sendCommand.getMockImplementation() as
+      | ((method: string, params?: Record<string, unknown>) => Promise<unknown>)
+      | undefined
     sendCommand.mockImplementation(async (method: string, params?: Record<string, unknown>) => {
       if (method === 'DOM.getBoxModel') {
         throw new Error('Could not compute box model')
@@ -417,7 +419,9 @@ describe('Browser automation pipeline (integration)', () => {
   it('preserves browser_cdp_error from getBoxModel transport failures', async () => {
     await rpc('browser.snapshot')
     const sendCommand = activeGuestHarness.guest.debugger.sendCommand as ReturnType<typeof vi.fn>
-    const previous = sendCommand.getMockImplementation()
+    const previous = sendCommand.getMockImplementation() as
+      | ((method: string, params?: Record<string, unknown>) => Promise<unknown>)
+      | undefined
     sendCommand.mockImplementation(async (method: string, params?: Record<string, unknown>) => {
       if (method === 'DOM.getBoxModel') {
         throw new BrowserError('browser_cdp_error', 'CDP command "DOM.getBoxModel" timed out')
@@ -436,7 +440,9 @@ describe('Browser automation pipeline (integration)', () => {
   it('returns browser_element_not_interactable when the element is disabled', async () => {
     await rpc('browser.snapshot')
     const sendCommand = activeGuestHarness.guest.debugger.sendCommand as ReturnType<typeof vi.fn>
-    const previous = sendCommand.getMockImplementation()
+    const previous = sendCommand.getMockImplementation() as
+      | ((method: string, params?: Record<string, unknown>) => Promise<unknown>)
+      | undefined
     sendCommand.mockImplementation(async (method: string, params?: Record<string, unknown>) => {
       if (method === 'Runtime.callFunctionOn') {
         const decl = (params as { functionDeclaration?: string })?.functionDeclaration ?? ''
@@ -454,6 +460,58 @@ describe('Browser automation pipeline (integration)', () => {
     expect(res.ok).toBe(false)
     expect((res.error as { code: string }).code).toBe('browser_element_not_interactable')
     expect((res.error as { message: string }).message).toMatch(/disabled/i)
+  })
+
+  it('returns browser_element_not_interactable when CSS hides the element', async () => {
+    await rpc('browser.snapshot')
+    const sendCommand = activeGuestHarness.guest.debugger.sendCommand as ReturnType<typeof vi.fn>
+    const previous = sendCommand.getMockImplementation() as
+      | ((method: string, params?: Record<string, unknown>) => Promise<unknown>)
+      | undefined
+    sendCommand.mockImplementation(async (method: string, params?: Record<string, unknown>) => {
+      if (method === 'Runtime.callFunctionOn') {
+        const decl = (params as { functionDeclaration?: string })?.functionDeclaration ?? ''
+        if (decl.includes('getComputedStyle')) {
+          return { result: { value: 'hidden' } }
+        }
+      }
+      if (previous) {
+        return previous(method, params)
+      }
+      return {}
+    })
+
+    const res = await rpc('browser.click', { element: '@e1' })
+    expect(res.ok).toBe(false)
+    expect((res.error as { code: string }).code).toBe('browser_element_not_interactable')
+  })
+
+  it('returns browser_element_not_interactable when another element covers its center', async () => {
+    await rpc('browser.snapshot')
+    const sendCommand = activeGuestHarness.guest.debugger.sendCommand as ReturnType<typeof vi.fn>
+    const previous = sendCommand.getMockImplementation() as
+      | ((method: string, params?: Record<string, unknown>) => Promise<unknown>)
+      | undefined
+    sendCommand.mockImplementation(async (method: string, params?: Record<string, unknown>) => {
+      if (method === 'Runtime.callFunctionOn') {
+        const call = params as {
+          functionDeclaration?: string
+          arguments?: { value: unknown }[]
+        }
+        if (call.functionDeclaration?.includes('elementFromPoint')) {
+          expect(call.arguments).toEqual([{ value: 200 }, { value: 225 }])
+          return { result: { value: 'obscured' } }
+        }
+      }
+      if (previous) {
+        return previous(method, params)
+      }
+      return {}
+    })
+
+    const res = await rpc('browser.click', { element: '@e1' })
+    expect(res.ok).toBe(false)
+    expect((res.error as { code: string }).code).toBe('browser_element_not_interactable')
   })
 
   // ── Navigation ──
