@@ -95,7 +95,7 @@ export function registerNestedRepoImportHandler(mainWindow: BrowserWindow, store
             importRepoPath = await importTargetResolver.resolveLocal(repoPath)
             // Why: marker-based isGitRepo can accept an owned-by-Administrators checkout while
             // Git itself refuses every worktree scan (#12627).
-            const accessBlocker = getLocalGitRepoAccessBlocker(importRepoPath)
+            const accessBlocker = await getLocalGitRepoAccessBlocker(importRepoPath)
             if (accessBlocker) {
               results.push({ path: repoPath, status: 'failed', error: accessBlocker })
               continue
