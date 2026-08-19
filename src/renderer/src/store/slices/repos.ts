@@ -1120,15 +1120,58 @@ function mergeProjectCompatibilityForHostRepoChange({
   })
 }
 
-function getProjectGroupHostId(group: Pick<ProjectGroup, 'connectionId' | 'executionHostId'>) {
-  if (group.executionHostId) {
-    return group.executionHostId
+function getProjectGroupHostId(
+  group: Pick<ProjectGroup, 'connectionId' | 'executionHostId'>
+): ExecutionHostId {
+  const explicitHost = parseExecutionHostId(group.executionHostId)
+  if (explicitHost) {
+    return explicitHost.id
   }
-  return group.connectionId ? toSshExecutionHostId(group.connectionId) : LOCAL_EXECUTION_HOST_ID
+  const connectionId = group.connectionId?.trim()
+  return connectionId ? toSshExecutionHostId(connectionId) : LOCAL_EXECUTION_HOST_ID
 }
 
 function getProjectGroupHostIdentity(group: ProjectGroup): string {
   return JSON.stringify([getProjectGroupHostId(group), group.id])
+}
+
+function projectGroupMatchesOwnerHost(
+  group: Pick<ProjectGroup, 'connectionId' | 'executionHostId'>,
+  ownerHostId: string
+): boolean {
+  if (!group.executionHostId && !group.connectionId?.trim()) {
+    return true
+  }
+  return catalogOwnsHost(ownerHostId, getProjectGroupHostId(group))
+}
+
+/** Route group mutations to the group's owner host, not whichever runtime is focused. */
+function settingsForProjectGroupOwner(
+  state: Pick<AppState, 'projectGroups' | 'settings'>,
+  groupId: string
+) {
+  const group = state.projectGroups.find((entry) => entry.id === groupId)
+  if (!group) {
+    return state.settings
+  }
+  // Why: pre-host-stamp / local-only rows keep focused-host routing.
+  if (!group.executionHostId && !group.connectionId?.trim()) {
+    return state.settings
+  }
+  const parsed = parseExecutionHostId(getProjectGroupHostId(group))
+  if (parsed?.kind === 'runtime') {
+    return state.settings
+      ? { ...state.settings, activeRuntimeEnvironmentId: parsed.environmentId }
+      : ({ activeRuntimeEnvironmentId: parsed.environmentId } as AppState['settings'])
+  }
+  // Why: a local/SSH group must not hit a focused paired runtime that never stored it.
+  if (
+    (parsed?.kind === 'local' || parsed?.kind === 'ssh' || group.connectionId?.trim()) &&
+    state.settings?.activeRuntimeEnvironmentId
+  ) {
+    return { ...state.settings, activeRuntimeEnvironmentId: null }
+  }
+  return state.settings
 }
 
 function catalogOwnsHost(catalogHostId: string, rowHostId: string): boolean {
@@ -2992,8 +3035,8 @@ export const createRepoSlice: StateCreator<AppState, [], [], RepoSlice> = (set, 
 
   updateProjectGroup: async (groupId, updates) => {
     try {
-      // Why: project groups are focused-host-scoped by design; all CRUD routes by the focused host and the list is replaced, not merged.
-      const target = getActiveRuntimeTarget(get().settings)
+      // Why: all-host catalog shows groups from every host; mutations must hit the owner (folder workspaces already do).
+      const target = getActiveRuntimeTarget(settingsForProjectGroupOwner(get(), groupId))
       const updated =
         target.kind === 'local'
           ? await window.api.projectGroups.update({ groupId, updates })
@@ -3009,8 +3052,13 @@ export const createRepoSlice: StateCreator<AppState, [], [], RepoSlice> = (set, 
         return false
       }
       const ownedGroup = projectGroupWithFetchedOwner(updated, target)
+      const ownerHostId = getRuntimeTargetHostId(target)
       set((s) => ({
-        projectGroups: s.projectGroups.map((group) => (group.id === groupId ? ownedGroup : group)),
+        projectGroups: s.projectGroups.map((group) =>
+          group.id === groupId && projectGroupMatchesOwnerHost(group, ownerHostId)
+            ? ownedGroup
+            : group
+        ),
         folderWorkspacePathStatuses: {}
       }))
       return true
@@ -3022,8 +3070,10 @@ export const createRepoSlice: StateCreator<AppState, [], [], RepoSlice> = (set, 
 
   deleteProjectGroup: async (groupId) => {
     try {
-      // Why: project groups are focused-host-scoped by design (see updateProjectGroup).
-      const target = getActiveRuntimeTarget(get().settings)
+      // Why: multi-host sidebars list remote groups while focus may be local (or vice versa).
+      const ownerSettings = settingsForProjectGroupOwner(get(), groupId)
+      const target = getActiveRuntimeTarget(ownerSettings)
+      const ownerHostId = getRuntimeTargetHostId(target)
       const deleted =
         target.kind === 'local'
           ? await window.api.projectGroups.delete({ groupId })
@@ -3039,14 +3089,27 @@ export const createRepoSlice: StateCreator<AppState, [], [], RepoSlice> = (set, 
         return false
       }
       set((s) => {
-        const deletedGroupIds = getProjectGroupSubtreeIds(s.projectGroups, groupId)
+        const hostGroups = s.projectGroups.filter((group) =>
+          projectGroupMatchesOwnerHost(group, ownerHostId)
+        )
+        const deletedGroupIds = getProjectGroupSubtreeIds(hostGroups, groupId)
         return {
-          projectGroups: s.projectGroups.filter((group) => !deletedGroupIds.has(group.id)),
+          projectGroups: s.projectGroups.filter(
+            (group) =>
+              !(deletedGroupIds.has(group.id) && projectGroupMatchesOwnerHost(group, ownerHostId))
+          ),
           folderWorkspaces: s.folderWorkspaces.filter(
-            (workspace) => !deletedGroupIds.has(workspace.projectGroupId)
+            (workspace) =>
+              !(
+                deletedGroupIds.has(workspace.projectGroupId) &&
+                catalogOwnsHost(ownerHostId, getFolderWorkspaceHostId(workspace, s.projectGroups))
+              )
           ),
           repos: s.repos.map((repo) =>
-            repo.projectGroupId && deletedGroupIds.has(repo.projectGroupId)
+            repo.projectGroupId &&
+            deletedGroupIds.has(repo.projectGroupId) &&
+            (catalogOwnsHost(ownerHostId, getRepoExecutionHostId(repo)) ||
+              (!repo.executionHostId && !repo.connectionId))
               ? { ...repo, projectGroupId: null }
               : repo
           ),
