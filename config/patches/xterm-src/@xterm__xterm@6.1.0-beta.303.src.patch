@@ -1104,7 +1104,7 @@ index c9ec396ab66cb966d49aa63bed09cdf9cd6c4246..d4d5106d8dd723eceed87310c193ccfe
    }
  }
 diff --git a/src/common/SortedList.ts b/src/common/SortedList.ts
-index 8a10076e3963e33b4a7d1e4602333eb3f4772dc9..6c3ea1fa49b8342d078d97017c080f27e7d9d112 100644
+index 8a10076e3963e33b4a7d1e4602333eb3f4772dc9..c6dcf18b762e3c56fe22e9c2d49b8e550d96f915 100644
 --- a/src/common/SortedList.ts
 +++ b/src/common/SortedList.ts
 @@ -22,7 +22,8 @@ export class SortedList<T> {
@@ -1113,7 +1113,7 @@ index 8a10076e3963e33b4a7d1e4602333eb3f4772dc9..6c3ea1fa49b8342d078d97017c080f27
  
 -  private readonly _deletedIndices: number[] = [];
 +  private readonly _deletedIndices = new Set<number>();
-+  private readonly _indicesByValue = new Map<T, number[]>();
++  private readonly _indicesByValue = new Map<T, number | number[]>();
    private readonly _flushDeletedTask: InstanceType<typeof IdleTaskQueue>;
    private _isFlushingDeleted = false;
  
@@ -1138,7 +1138,7 @@ index 8a10076e3963e33b4a7d1e4602333eb3f4772dc9..6c3ea1fa49b8342d078d97017c080f27
      this._insertedValues.length = 0;
    }
  
-@@ -78,54 +81,58 @@ export class SortedList<T> {
+@@ -78,54 +81,60 @@ export class SortedList<T> {
      }
    }
  
@@ -1148,10 +1148,12 @@ index 8a10076e3963e33b4a7d1e4602333eb3f4772dc9..6c3ea1fa49b8342d078d97017c080f27
 +    for (let index = this._array.length - 1; index >= 0; index--) {
 +      const value = this._array[index];
 +      const indices = this._indicesByValue.get(value);
-+      if (indices) {
-+        indices.push(index);
++      if (indices === undefined) {
++        this._indicesByValue.set(value, index);
++      } else if (typeof indices === 'number') {
++        this._indicesByValue.set(value, [indices, index]);
 +      } else {
-+        this._indicesByValue.set(value, [index]);
++        indices.push(index);
 +      }
 +    }
 +  }
@@ -1161,19 +1163,19 @@ index 8a10076e3963e33b4a7d1e4602333eb3f4772dc9..6c3ea1fa49b8342d078d97017c080f27
 -    if (this._array.length === 0) {
 +    // Marker disposal mutates the sort key before removal; identity stays stable.
 +    const indices = this._indicesByValue.get(value);
-+    if (!indices) {
++    if (indices === undefined) {
        return false;
      }
 -    const key = this._getKey(value);
 -    if (key === undefined) {
-+    const index = indices.pop();
++    const index = typeof indices === 'number' ? indices : indices.pop();
 +    if (index === undefined) {
        return false;
      }
 -    i = this._search(key);
 -    if (i === -1) {
 -      return false;
-+    if (indices.length === 0) {
++    if (typeof indices === 'number' || indices.length === 0) {
 +      this._indicesByValue.delete(value);
      }
 -    if (this._getKey(this._array[i]) !== key) {

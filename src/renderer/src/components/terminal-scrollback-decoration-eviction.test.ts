@@ -108,6 +108,27 @@ describe('scrollback decoration eviction (#10879)', () => {
     }
   })
 
+  it('preserves duplicate counts through partial compaction and reinsertion', () => {
+    const sorted = list()
+    const entry = { line: 0, id: 0 }
+    try {
+      sorted.insert(entry)
+      sorted.insert(entry)
+      sorted.insert(entry)
+      expect(sorted.delete(entry)).toBe(true)
+      expect([...sorted.values()]).toEqual([entry, entry])
+      expect(sorted.delete(entry)).toBe(true)
+      expect([...sorted.values()]).toEqual([entry])
+      sorted.insert(entry)
+      expect(sorted.delete(entry)).toBe(true)
+      expect(sorted.delete(entry)).toBe(true)
+      expect(sorted.delete(entry)).toBe(false)
+      expect([...sorted.values()]).toEqual([])
+    } finally {
+      sorted.clear()
+    }
+  })
+
   it('matches identity membership through mixed key mutation and compaction', () => {
     const sorted = list()
     let seed = 10879
