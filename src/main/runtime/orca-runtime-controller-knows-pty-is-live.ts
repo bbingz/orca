@@ -136,7 +136,7 @@ export class OrcaRuntimeWithControllerKnowsPtyIsLive extends OrcaRuntimeWithReso
       }
       await assertTerminalInputWithinLimitWithYield(payload)
       const generation = this.getPtyLifecycleGeneration(pty.pty.ptyId)
-      await this.waitForCodexPromptComposer(pty.pty.ptyId)
+      await this.waitForCodexPromptComposer(pty.pty.ptyId, options.signal)
       if (
         this.getPtyLifecycleGeneration(pty.pty.ptyId) !== generation ||
         this.ptysById.get(pty.pty.ptyId) !== pty.pty ||
@@ -180,7 +180,7 @@ export class OrcaRuntimeWithControllerKnowsPtyIsLive extends OrcaRuntimeWithReso
     }
     const ptyId = leaf.ptyId
     const generation = this.getPtyLifecycleGeneration(ptyId)
-    await this.waitForCodexPromptComposer(ptyId)
+    await this.waitForCodexPromptComposer(ptyId, options.signal)
     if (this.getPtyLifecycleGeneration(ptyId) !== generation) {
       throw new Error('terminal_exited')
     }
@@ -202,7 +202,7 @@ export class OrcaRuntimeWithControllerKnowsPtyIsLive extends OrcaRuntimeWithReso
     }
   }
 
-  protected async waitForCodexPromptComposer(ptyId: string): Promise<void> {
+  protected async waitForCodexPromptComposer(ptyId: string, signal?: AbortSignal): Promise<void> {
     const pty = this.ptysById.get(ptyId)
     if ((pty?.launchAgent ?? pty?.foregroundAgent) !== 'codex') {
       return
@@ -214,7 +214,8 @@ export class OrcaRuntimeWithControllerKnowsPtyIsLive extends OrcaRuntimeWithReso
         subscribeToExit: (id, listener) => this.subscribeToPtyExit(id, listener)
       },
       ptyId,
-      'codex'
+      'codex',
+      signal
     )
     if (!ready) {
       throw new Error('agent_composer_not_ready')

@@ -14,7 +14,8 @@ export type PtyDraftInputReadyHost = {
 export function waitForPtyDraftInputReady(
   host: PtyDraftInputReadyHost,
   ptyId: string,
-  agent: TuiAgent
+  agent: TuiAgent,
+  signal?: AbortSignal
 ): Promise<boolean> {
   const readySignal =
     TUI_AGENT_CONFIG[agent].draftPasteReadySignal ?? 'render-quiet-after-bracketed-paste'
@@ -26,15 +27,24 @@ export function waitForPtyDraftInputReady(
     let unsubscribeData: (() => void) | null = null
     let unsubscribeExit: (() => void) | null = null
 
+    const onAbort = (): void => {
+      fail(new Error('request_aborted'))
+    }
+
     const cleanup = (): void => {
       if (quietTimer) {
         clearTimeout(quietTimer)
+        quietTimer = null
       }
       if (hardTimer) {
         clearTimeout(hardTimer)
+        hardTimer = null
       }
       unsubscribeData?.()
+      unsubscribeData = null
       unsubscribeExit?.()
+      unsubscribeExit = null
+      signal?.removeEventListener('abort', onAbort)
     }
 
     const finish = (value: boolean): void => {
@@ -55,7 +65,18 @@ export function waitForPtyDraftInputReady(
       reject(error)
     }
 
+    const abortIfRequested = (): boolean => {
+      if (!signal?.aborted) {
+        return false
+      }
+      onAbort()
+      return true
+    }
+
     const observeData = (data: string): void => {
+      if (abortIfRequested()) {
+        return
+      }
       const { ready, armQuietTimer } = scanner.observe(data)
       if (ready) {
         finish(true)
@@ -67,17 +88,36 @@ export function waitForPtyDraftInputReady(
       if (quietTimer) {
         clearTimeout(quietTimer)
       }
-      quietTimer = setTimeout(() => finish(true), BRACKETED_PASTE_QUIET_MS)
+      quietTimer = setTimeout(() => {
+        if (abortIfRequested()) {
+          return
+        }
+        finish(true)
+      }, BRACKETED_PASTE_QUIET_MS)
     }
 
     unsubscribeData = host.subscribeToData(ptyId, observeData)
-    unsubscribeExit = host.subscribeToExit(ptyId, () => fail(new Error('terminal_exited')))
+    unsubscribeExit = host.subscribeToExit(ptyId, () => {
+      if (abortIfRequested()) {
+        return
+      }
+      fail(new Error('terminal_exited'))
+    })
+    signal?.addEventListener('abort', onAbort, { once: true })
+    if (abortIfRequested()) {
+      return
+    }
     const replay = host.readRecentOutput(ptyId)
     if (replay) {
       observeData(replay)
     }
     if (!settled) {
-      hardTimer = setTimeout(() => finish(false), resolveDraftPasteReadyTimeoutMs(agent))
+      hardTimer = setTimeout(() => {
+        if (abortIfRequested()) {
+          return
+        }
+        finish(false)
+      }, resolveDraftPasteReadyTimeoutMs(agent))
     }
   })
 }
