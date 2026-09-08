@@ -52,23 +52,27 @@ export function moveHookTrustContent(
       return []
     }
     const state = states.get(fromKey)
-    // Why: disabled user hooks often have no trusted_hash. Skipping them leaves
-    // enablement at the old index (now the managed hook) and drops the user's
-    // disablement. Move any enabled/hash row without inventing a hash.
-    if (!state || (state.trustedHash === undefined && state.enabled === undefined)) {
-      return []
-    }
-    return [{ fromKey, toKey, trustedHash: state.trustedHash, enabled: state.enabled }]
+    return [{ fromKey, toKey, trustedHash: state?.trustedHash, enabled: state?.enabled }]
   })
-  let updated = existing
-  // Why: remove old index-addressed user trust blocks before writing the shifted keys so remote prepend does not leave duplicate approvals.
-  if (resolvedMoves.length > 0) {
-    updated = removeHookTrustContent(updated, [
-      ...new Set(resolvedMoves.map(({ fromKey }) => fromKey))
-    ])
+  if (resolvedMoves.length === 0) {
+    return existing
   }
+  // Why: destination is the source snapshot only. Vacate every non-identity
+  // from and to key before writes so a missing source clears a stale dest
+  // approval and a missing enabled cannot inherit dest disablement.
+  let updated = removeHookTrustContent(existing, [
+    ...new Set(resolvedMoves.flatMap(({ fromKey, toKey }) => [fromKey, toKey]))
+  ])
   for (const { toKey, trustedHash, enabled } of resolvedMoves) {
-    updated = upsertTrustBlocks(updated, getTrustKeyWriteVariants(toKey), trustedHash, enabled)
+    if (trustedHash === undefined && enabled === undefined) {
+      continue
+    }
+    updated = upsertTrustBlocks(
+      updated,
+      getTrustKeyWriteVariants(toKey),
+      trustedHash,
+      enabled ?? true
+    )
   }
   return updated
 }
