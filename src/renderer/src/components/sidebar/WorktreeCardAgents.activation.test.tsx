@@ -353,10 +353,10 @@ describe('WorktreeCardAgents activation', () => {
       })
     ]
     mockAgentStatusByPaneKey = { [paneKey]: { worktreeId: 'wt-1' } }
-    let rAF: FrameRequestCallback | null = null
+    const scheduledFrames: FrameRequestCallback[] = []
     const originalRAF = globalThis.requestAnimationFrame
     globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => {
-      rAF = cb
+      scheduledFrames.push(cb)
       return 1
     }) as typeof requestAnimationFrame
 
@@ -367,8 +367,8 @@ describe('WorktreeCardAgents activation', () => {
       expect(activationMocks.activateTabAndFocusPane).not.toHaveBeenCalled()
 
       mockTabsByWorktree = { 'wt-1': [{ id: tabId }] }
-      expect(rAF).not.toBeNull()
-      rAF?.(0)
+      expect(scheduledFrames).toHaveLength(1)
+      scheduledFrames[0]!(0)
 
       expect(activationMocks.activateTabAndFocusPane).toHaveBeenCalledWith(tabId, LEAF_A, {
         ackPaneKeyOnSuccess: paneKey,
