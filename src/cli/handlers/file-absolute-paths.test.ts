@@ -421,6 +421,29 @@ describe('absolute file CLI paths', () => {
     expect(callMock.mock.calls.some((call) => call[1]?.relativePath === 'src/a/b.ts')).toBe(false)
   })
 
+  it.each(['src/lib/../a\\b.ts', '/home/deploy/repo/src/lib/../a\\b.ts'])(
+    'normalizes POSIX dot segments while preserving a literal backslash: %s',
+    async (path) => {
+      queueFixtures(
+        callMock,
+        okFixture('req_show', { worktree: buildWorktree('/home/deploy/repo', 'feature') }),
+        okFixture('req_open', {
+          worktree: 'wt-1',
+          relativePath: 'src/a\\b.ts',
+          kind: 'text',
+          opened: true
+        })
+      )
+
+      await main(['file', 'open', '--path', path, '--worktree', 'id:wt-1'], 'C:\\users\\ada')
+
+      expect(callMock).toHaveBeenNthCalledWith(2, 'files.open', {
+        worktree: 'id:wt-1',
+        relativePath: 'src/a\\b.ts'
+      })
+    }
+  )
+
   it('relativizes parent-segment paths that stay inside the worktree', async () => {
     queueFixtures(
       callMock,
