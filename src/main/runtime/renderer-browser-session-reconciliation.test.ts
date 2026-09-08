@@ -75,6 +75,10 @@ function reconcile(
       storeMobileSessionSnapshot,
       reconcileOffscreenOwnedMobileSessionBrowserTabs:
         proto.reconcileOffscreenOwnedMobileSessionBrowserTabs,
+      isHeadlessBuiltMobileSessionPublicationBase: isHeadlessBuiltPublication,
+      getAcceptedRendererIdentityKeysForMobileSessionSnapshot() {
+        return null
+      },
       isRendererOwnedMobileBrowserTab(
         snapshot: RuntimeMobileSessionTabsSnapshot,
         tab: RuntimeMobileSessionBrowserTab

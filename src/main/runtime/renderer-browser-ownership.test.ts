@@ -112,4 +112,45 @@ it('preserves renderer browser ownership across headless reconciliation and clos
   await runtime.closeMobileSessionTab(`id:${TEST_WORKTREE_ID}`, 'headless-page-1')
   expect(closeSessionTab).not.toHaveBeenCalled()
   expect(closeTab).toHaveBeenCalledWith('headless-page-1')
+
+  const afterHeadlessClose = runtime['mobileSessionTabsByWorktree'].get(TEST_WORKTREE_ID)!
+  expect(afterHeadlessClose.publicationEpoch).toBe('epoch-1')
+  expect((await runtime.listMobileSessionTabs(`id:${TEST_WORKTREE_ID}`)).tabs).toEqual([
+    expect.objectContaining({ id: 'browser-unified-1' })
+  ])
+
+  closeSessionTab.mockClear()
+  closeTab.mockClear()
+  await runtime.closeMobileSessionTab(`id:${TEST_WORKTREE_ID}`, 'browser-workspace-1')
+  expect(closeSessionTab).toHaveBeenCalledWith('browser-unified-1', TEST_WORKTREE_ID)
+  expect(closeTab).not.toHaveBeenCalled()
+
+  runtime.setAgentBrowserBridge({
+    tabList: vi.fn(() => ({
+      tabs: [
+        {
+          browserPageId: 'headless-page-1',
+          title: 'Headless Browser',
+          url: 'https://headless.example/'
+        }
+      ]
+    }))
+  } as never)
+  const detachedSnapshot = runtime['buildPreservedHeadlessMobileSessionSnapshot']({
+    ...afterHeadlessClose,
+    publicationEpoch: 'epoch-1:headless-merge:runtime-page',
+    tabs: [...afterHeadlessClose.tabs, headlessTab]
+  })!
+  runtime['acceptedRendererMobileSnapshotByWorktree'].delete(TEST_WORKTREE_ID)
+  runtime['mobileSessionTabsByWorktree'].set(TEST_WORKTREE_ID, detachedSnapshot)
+  expect(detachedSnapshot.publicationEpoch).toMatch(/^headless-hydrated:/)
+
+  const preservedAgain = runtime['buildPreservedHeadlessMobileSessionSnapshot'](detachedSnapshot)
+  expect(preservedAgain?.publicationEpoch).toBe(detachedSnapshot.publicationEpoch)
+
+  closeSessionTab.mockClear()
+  closeTab.mockClear()
+  await runtime.closeMobileSessionTab(`id:${TEST_WORKTREE_ID}`, 'headless-page-1')
+  expect(closeSessionTab).not.toHaveBeenCalled()
+  expect(closeTab).toHaveBeenCalledWith('headless-page-1')
 })

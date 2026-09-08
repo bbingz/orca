@@ -93,6 +93,14 @@ export class OrcaRuntimeWithReconcileHeadlessMobileSessionBrowserTabs extends Or
     existing: RuntimeMobileSessionTabsSnapshot,
     existingBrowserTabs: RuntimeMobileSessionBrowserTab[]
   ): void {
+    // Why: without an accepted renderer revision, ownership is unknown — do not
+    // promote live offscreen pages into a renderer-base snapshot.
+    const headlessBuilt = this.isHeadlessBuiltMobileSessionPublicationBase(
+      existing.publicationEpoch
+    )
+    if (!headlessBuilt && !this.getAcceptedRendererIdentityKeysForMobileSessionSnapshot(existing)) {
+      return
+    }
     const existingHeadlessBrowserTabs = existingBrowserTabs.filter(
       (tab) => !this.isRendererOwnedMobileBrowserTab(existing, tab)
     )
