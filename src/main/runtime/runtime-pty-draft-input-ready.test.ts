@@ -9,6 +9,7 @@ const CODEX_COMPOSER_READY_BYTES = '\x1b[?2004h\x1b[?1049h\x1b[1m›\x1b[0m'
 function createHost(initial?: string): PtyDraftInputReadyHost & {
   emit: (data: string) => void
   exit: () => void
+  listenerCounts: () => { data: number; exit: number }
 } {
   const dataListeners = new Set<(data: string) => void>()
   const exitListeners = new Set<() => void>()
@@ -39,6 +40,9 @@ function createHost(initial?: string): PtyDraftInputReadyHost & {
       for (const listener of exitListeners) {
         listener()
       }
+    },
+    listenerCounts() {
+      return { data: dataListeners.size, exit: exitListeners.size }
     }
   }
 }
@@ -74,5 +78,45 @@ describe('waitForPtyDraftInputReady', () => {
     const wait = waitForPtyDraftInputReady(host, 'pty-1', 'codex')
     host.exit()
     await expect(wait).rejects.toThrow('terminal_exited')
+    expect(host.listenerCounts()).toEqual({ data: 0, exit: 0 })
+  })
+
+  it('rejects an already-aborted wait before replayed composer bytes', async () => {
+    const host = createHost(CODEX_COMPOSER_READY_BYTES)
+    const controller = new AbortController()
+    controller.abort()
+    await expect(
+      waitForPtyDraftInputReady(host, 'pty-1', 'codex', controller.signal)
+    ).rejects.toThrow('request_aborted')
+    expect(host.listenerCounts()).toEqual({ data: 0, exit: 0 })
+  })
+
+  it('rejects mid-wait abort and disposes listeners before later data or exit', async () => {
+    vi.useFakeTimers()
+    try {
+      const host = createHost()
+      const controller = new AbortController()
+      const wait = waitForPtyDraftInputReady(host, 'pty-1', 'codex', controller.signal)
+      await vi.advanceTimersByTimeAsync(10)
+      controller.abort()
+      await expect(wait).rejects.toThrow('request_aborted')
+      expect(host.listenerCounts()).toEqual({ data: 0, exit: 0 })
+      host.emit(CODEX_COMPOSER_READY_BYTES)
+      host.exit()
+      await vi.advanceTimersByTimeAsync(20_000)
+      expect(host.listenerCounts()).toEqual({ data: 0, exit: 0 })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('prefers request_aborted when abort races a PTY exit', async () => {
+    const host = createHost()
+    const controller = new AbortController()
+    const wait = waitForPtyDraftInputReady(host, 'pty-1', 'codex', controller.signal)
+    controller.abort()
+    host.exit()
+    await expect(wait).rejects.toThrow('request_aborted')
+    expect(host.listenerCounts()).toEqual({ data: 0, exit: 0 })
   })
 })
