@@ -302,6 +302,39 @@ describe('Codex WSL runtime hook install', () => {
     ])
   })
 
+  it('does not inherit a prior hash when the current trust entry is missing', () => {
+    const plan = createTestPlan()
+    writeFileSync(plan.tomlPath, '', 'utf-8')
+    const previous = {
+      ...getManagedTrustEntry(plan, expectedManagedCommand(plan.commandScriptPath)),
+      trustedHash: 'sha256:must-not-inherit'
+    }
+    const next = getManagedTrustEntry(plan, expectedManagedCommand(plan.commandScriptPath))
+
+    expect(preserveCodexWrittenWslManagedHookTrust(plan.tomlPath, [{ previous, next }])).toEqual([
+      next
+    ])
+  })
+
+  it('keeps enabled false when preserving an unchanged Codex-written hash', () => {
+    const plan = createTestPlan()
+    writeFileSync(plan.tomlPath, '', 'utf-8')
+    const next = getManagedTrustEntry(plan, expectedManagedCommand(plan.commandScriptPath))
+    upsertHookTrustEntries(plan.tomlPath, [
+      { ...next, trustedHash: 'sha256:codex-wsl-authoritative', enabled: false }
+    ])
+
+    expect(
+      preserveCodexWrittenWslManagedHookTrust(plan.tomlPath, [{ previous: next, next }])
+    ).toEqual([
+      {
+        ...next,
+        trustedHash: 'sha256:codex-wsl-authoritative',
+        enabled: false
+      }
+    ])
+  })
+
   it.skipIf(process.platform === 'win32')(
     'drains stdin when the WSL runtime script is missing',
     async () => {
