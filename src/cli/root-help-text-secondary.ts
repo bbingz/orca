@@ -87,7 +87,7 @@ export const ROOT_HELP_TEXT_SECONDARY = [
   '  --no-parent               Force no parent lineage for unrelated worktree creation/update',
   '',
   'Terminal Send Options:',
-  "  --text <text>             Raw bytes written to the PTY (not filtered). Use Bash/Zsh ANSI-C quoting for control keys, e.g. $'\\x1b' for Escape",
+  "  --text <text>             Raw bytes written to the PTY without --enter. Use Bash/Zsh ANSI-C quoting for control keys, e.g. $'\\x1b' for Escape",
   '  --enter                   Append Enter after sending text',
   '  --interrupt               Append Ctrl+C (\\x03); other control keys go through --text',
   '  --wait-submit <seconds>   Observe this accepted prompt without resending it',
