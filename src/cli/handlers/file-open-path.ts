@@ -1,3 +1,4 @@
+import { posix } from 'node:path'
 import type { RuntimeWorktreeRecord } from '../../shared/runtime-types'
 import {
   isRuntimePathAbsolute,
@@ -62,13 +63,9 @@ function fileOpenPathFlavor(rootPath: string, path: string): 'posix' | 'windows'
 
 function resolveFileOpenCandidate(rootPath: string, path: string): string {
   const flavor = fileOpenPathFlavor(rootPath, path)
-  // Why: resolveRuntimePath infers Windows from any `\`, which would rewrite a
-  // legal POSIX filename. Skip join/normalize and keep the bytes.
-  if (flavor === 'posix' && path.includes('\\')) {
-    return path
-  }
-  if (isRuntimePathAbsolute(path, flavor)) {
-    return resolveRuntimePath(flavor === 'windows' ? 'C:\\' : '/', path)
+  // POSIX normalization preserves literal backslashes while resolving dot segments.
+  if (flavor === 'posix') {
+    return posix.resolve(rootPath, path)
   }
   // Spec: relatives (including dotted) are vs the selected worktree, not client cwd.
   return resolveRuntimePath(rootPath, path)
