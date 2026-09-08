@@ -15,6 +15,7 @@ import {
 } from '../../../shared/protocol-version'
 import { clearRuntimeCompatibilityCacheForTests } from '@/runtime/runtime-rpc-client'
 import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../shared/constants'
+import { makeWorktree } from '@/store/slices/worktrees-slice-test-fixtures'
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true
 
@@ -313,10 +314,20 @@ describe('useDetectedAgents (local call site)', () => {
       projects: [
         {
           id: 'repo-a',
+          displayName: 'WSL A',
+          badgeColor: '#000000',
+          sourceRepoIds: ['repo-a'],
+          createdAt: 0,
+          updatedAt: 0,
           localWindowsRuntimePreference: { kind: 'wsl', distro: 'Ubuntu' }
         },
         {
           id: 'repo-b',
+          displayName: 'WSL B',
+          badgeColor: '#000000',
+          sourceRepoIds: ['repo-b'],
+          createdAt: 0,
+          updatedAt: 0,
           localWindowsRuntimePreference: { kind: 'wsl', distro: 'Debian' }
         }
       ],
@@ -338,20 +349,20 @@ describe('useDetectedAgents (local call site)', () => {
       ],
       worktreesByRepo: {
         'repo-a': [
-          {
+          makeWorktree({
             id: 'wt-a',
             repoId: 'repo-a',
             path: '\\\\wsl.localhost\\Ubuntu\\home\\alice\\a',
             displayName: 'main'
-          }
+          })
         ],
         'repo-b': [
-          {
+          makeWorktree({
             id: 'wt-b',
             repoId: 'repo-b',
             path: '\\\\wsl.localhost\\Debian\\home\\alice\\b',
             displayName: 'main'
-          }
+          })
         ]
       },
       localDetectedAgentIdsByContext: {
@@ -362,18 +373,18 @@ describe('useDetectedAgents (local call site)', () => {
         'repo-a:wsl:Ubuntu': false,
         'repo-b:wsl:Debian': false
       }
-    } as never)
+    })
 
-    const targetA = {
+    const targetA: AgentDetectionTarget = {
       kind: 'local',
       worktreeId: 'wt-a',
       contextKey: 'repo-a:wsl:Ubuntu'
-    } as AgentDetectionTarget
-    const targetB = {
+    }
+    const targetB: AgentDetectionTarget = {
       kind: 'local',
       worktreeId: 'wt-b',
       contextKey: 'repo-b:wsl:Debian'
-    } as AgentDetectionTarget
+    }
 
     const root = await renderProbe(targetA)
     expect(detectLocalAgents).toHaveBeenCalledTimes(1)
