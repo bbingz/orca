@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
-import { normalizeHookPayload } from './agent-hook-listener'
-import { createHookListenerState } from './agent-hook-listener/listener-state'
-import { PANE_KEY } from './agent-hook-listener-test-harness'
-import { AgentHookServer } from '../main/agent-hooks/server'
+import { normalizeHookPayload } from '../../shared/agent-hook-listener'
+import { createHookListenerState } from '../../shared/agent-hook-listener/listener-state'
+import { PANE_KEY } from '../../shared/agent-hook-listener-test-harness'
+import { AgentHookServer } from './server'
 
-vi.mock('../main/telemetry/client', () => ({ track: vi.fn() }))
-vi.mock('../main/telemetry/cohort-classifier', () => ({ getCohortAtEmit: vi.fn(() => ({})) }))
+vi.mock('../telemetry/client', () => ({ track: vi.fn() }))
+vi.mock('../telemetry/cohort-classifier', () => ({ getCohortAtEmit: vi.fn(() => ({})) }))
 
 describe('review: Codex root identity isolation', () => {
   it('keeps the parent status and session when a child emits SessionStart', () => {
@@ -23,7 +23,9 @@ describe('review: Codex root identity isolation', () => {
       },
       'production'
     )
-    if (!parent) throw new Error('missing parent fixture')
+    if (!parent) {
+      throw new Error('missing parent fixture')
+    }
     state.lastStatusByPaneKey.set(PANE_KEY, parent)
     normalizeHookPayload(
       state,
@@ -97,6 +99,7 @@ describe('review: Codex root identity isolation', () => {
       .soft(server._getStateForTests().lastProviderSessionByPaneKey.get(PANE_KEY)?.id)
       .toBe('current-session')
   })
+
   it('ignores session identity from an unrecognized hook', () => {
     const state = createHookListenerState()
     normalizeHookPayload(
