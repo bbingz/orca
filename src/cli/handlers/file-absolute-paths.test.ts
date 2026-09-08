@@ -335,6 +335,26 @@ describe('absolute file CLI paths', () => {
     expect(callMock).toHaveBeenCalledWith('worktree.show', { worktree: 'id:wt-1' })
   })
 
+  it.each([
+    ['Windows', 'C:\\repo', 'C:\\elsewhere\\App.tsx', 'C:\\users\\ada'],
+    ['SSH POSIX', '/home/deploy/repo', '/var/elsewhere/App.tsx', '/tmp'],
+    ['folder workspace', '/Users/ada/notes', '/Users/ada/Downloads/App.tsx', '/Users/ada/notes']
+  ])(
+    'rejects an outside %s path with the worktree root in the error',
+    async (_flavor, root, absolutePath, cwd) => {
+      queueFixtures(callMock, okFixture('req_show', { worktree: buildWorktree(root, 'feature') }))
+
+      await main(['file', 'open', '--path', absolutePath, '--worktree', 'id:wt-1'], cwd)
+
+      expect(process.exitCode).toBe(1)
+      expect(console.error).toHaveBeenCalledWith(
+        expect.stringContaining(`Path is outside the selected worktree (${root}).`)
+      )
+      expect(callMock).toHaveBeenCalledTimes(1)
+      expect(callMock).toHaveBeenCalledWith('worktree.show', { worktree: 'id:wt-1' })
+    }
+  )
+
   it('rejects parent-segment relative paths that escape the worktree', async () => {
     queueFixtures(
       callMock,
