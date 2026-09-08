@@ -96,6 +96,18 @@ describe('orca skills remove CLI', () => {
     vi.unstubAllEnvs()
   })
 
+  it('documents skills remove on group help and root help', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+    await main(['skills', '--help'], '/tmp/repo')
+    await main(['--help'], '/tmp/repo')
+
+    expect(String(logSpy.mock.calls[0]?.[0])).toContain(
+      'remove             Remove installed Orca skills'
+    )
+    expect(String(logSpy.mock.calls[1]?.[0])).toContain('skills remove')
+  })
+
   it('lists removable skills when no --skill/--all is given', async () => {
     const stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
 
