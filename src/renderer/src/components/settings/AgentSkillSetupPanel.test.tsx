@@ -460,6 +460,53 @@ describe('AgentSkillSetupPanel', () => {
     expect(mocks.terminalProps.at(-1)).toMatchObject({ command: TERMINAL_UPDATE_COMMAND })
   })
 
+  it('copies the captured interactive install after installed state changes', async () => {
+    await renderInteractivePanel({ installed: false, installedCommand: UPDATE_COMMAND })
+    await clickButton('Install')
+    await rerenderInteractivePanel({ installed: true, installedCommand: UPDATE_COMMAND })
+    await act(async () => {
+      container
+        ?.querySelector<HTMLButtonElement>('button[aria-label="Copy command"]')
+        ?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+    expect(mocks.clipboardWrite).toHaveBeenCalledWith(INSTALL_COMMAND)
+  })
+
+  it('previews the interactive command when executing unattended installation', async () => {
+    await renderInteractivePanel({
+      terminalCommands: { install: TERMINAL_INSTALL_COMMAND }
+    })
+    await clickButton('Install')
+    expect(container?.querySelector('code')?.textContent).toBe(INSTALL_COMMAND)
+    expect(mocks.terminalProps.at(-1)).toMatchObject({ command: TERMINAL_INSTALL_COMMAND })
+  })
+
+  it('recaptures interactive and unattended commands on retry', async () => {
+    await renderInteractivePanel({
+      installed: false,
+      installedCommand: UPDATE_COMMAND,
+      terminalCommands: { install: TERMINAL_INSTALL_COMMAND, update: TERMINAL_UPDATE_COMMAND }
+    })
+    await clickButton('Install')
+    await act(async () => {
+      mocks.terminalProps.at(-1)?.onCommandFinished?.(1)
+    })
+    await rerenderInteractivePanel({
+      installed: true,
+      installedCommand: UPDATE_COMMAND,
+      terminalCommands: { install: TERMINAL_INSTALL_COMMAND, update: TERMINAL_UPDATE_COMMAND }
+    })
+    await clickButton('Retry')
+    expect(container?.querySelector('code')?.textContent).toBe(UPDATE_COMMAND)
+    expect(mocks.terminalProps.at(-1)).toMatchObject({ command: TERMINAL_UPDATE_COMMAND })
+    await act(async () => {
+      container
+        ?.querySelector<HTMLButtonElement>('button[aria-label="Copy command"]')
+        ?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+    expect(mocks.clipboardWrite).toHaveBeenCalledWith(UPDATE_COMMAND)
+  })
+
   it('keeps an open terminal on the command captured when it opened', async () => {
     await renderInteractivePanel({ installed: false, installedCommand: UPDATE_COMMAND })
     await clickButton('Install')
