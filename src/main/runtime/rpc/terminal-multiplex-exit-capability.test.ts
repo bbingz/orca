@@ -77,6 +77,35 @@ describe('terminal multiplex exit capability', () => {
     await harness.dispatchPromise
   })
 
+  it('does not report process exit when the exit wait becomes unverifiable', async () => {
+    const harness = startDesktopMultiplexSubscribe({
+      waitForTerminal: vi.fn().mockResolvedValue({
+        ...EXIT_WAIT,
+        satisfied: true,
+        status: 'unknown',
+        exitCode: null
+      } satisfies RuntimeTerminalWait)
+    })
+    await vi.waitFor(() =>
+      expect(results(harness.messages).some((event) => event.type === 'ready')).toBe(true)
+    )
+    sendDesktopMultiplexSubscribe(harness.handlers, { terminalExited: 1 })
+    await vi.waitFor(() =>
+      expect(results(harness.messages).some((event) => event.type === 'end')).toBe(true)
+    )
+    const events = results(harness.messages)
+    expect(events.some((event) => event.type === 'exited')).toBe(false)
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: 'end',
+        streamId: 7,
+        verdict: 'unverifiable'
+      })
+    )
+    harness.registry.cleanupSubscription('terminal-multiplex:conn-desktop-first-paint')
+    await harness.dispatchPromise
+  })
+
   it('never emits exited when the terminal handle is stale', async () => {
     const harness = startDesktopMultiplexSubscribe({
       resolveLiveLeafForHandle: vi.fn(() => {
