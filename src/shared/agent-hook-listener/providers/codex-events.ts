@@ -127,6 +127,14 @@ export function normalizeCodexEvent(
     return normalizeCodexSubagentLifecycleEvent(state, eventName, paneKey, hookPayload)
   }
 
+  // Why: child hooks share the parent paneKey and carry their own session_id.
+  // Root SessionStart reset must not run for them — it would drop parent
+  // status/roster and store the child session as the resume id.
+  const childAgentId = readString(hookPayload, 'agent_id')
+  if (childAgentId && eventName === 'SessionStart') {
+    return null
+  }
+
   if (eventName === 'SessionStart') {
     // Why: Codex fires SessionStart when opening or resuming an idle TUI, before
     // a user prompt exists; reset stale turn/session cache without emitting state.
