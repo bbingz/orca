@@ -31,18 +31,28 @@ export abstract class AgentHookServerStatusRetries extends AgentHookServerStatus
     this.codexSubagentPollScheduler.clearAll()
   }
 
+  protected canApplyCodexSessionStart(
+    status: AgentHookEventPayload | undefined,
+    expectedConnectionId?: string
+  ): boolean {
+    if (!status) {
+      return true
+    }
+    if (status.payload.agentType !== 'codex') {
+      return false
+    }
+    // Why: a delayed relay notification must not clear a newer remote target's
+    // status if pane identity is ever reused across logical connections.
+    return expectedConnectionId === undefined || status.connectionId === expectedConnectionId
+  }
+
   protected clearStatusForSessionStart(
     paneKey: string,
     previousStatus?: AgentHookEventPayload,
     expectedConnectionId?: string
   ): void {
     const status = previousStatus ?? this.state.lastStatusByPaneKey.get(paneKey)
-    // Why: a delayed relay notification must not clear a newer remote target's
-    // status if pane identity is ever reused across logical connections.
-    if (
-      status?.payload.agentType !== 'codex' ||
-      (expectedConnectionId !== undefined && status.connectionId !== expectedConnectionId)
-    ) {
+    if (!status || !this.canApplyCodexSessionStart(status, expectedConnectionId)) {
       return
     }
     this.state.lastStatusByPaneKey.delete(paneKey)
