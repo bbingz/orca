@@ -128,6 +128,9 @@ export function activateMultiplexStream(
     })
     .then((wait) => {
       if (streams.get(request.streamId) === stream) {
+        if (stream.supportsTerminalExited) {
+          emit({ type: 'exited', streamId: request.streamId, exitCode: wait.exitCode })
+        }
         state.detachStream(
           request.streamId,
           wait.satisfied && wait.condition === 'exit' && wait.status === 'exited'
