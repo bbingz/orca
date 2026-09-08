@@ -52,9 +52,13 @@ export function moveHookTrustContent(
       return []
     }
     const state = states.get(fromKey)
-    return state?.trustedHash
-      ? [{ fromKey, toKey, trustedHash: state.trustedHash, enabled: state.enabled }]
-      : []
+    // Why: disabled user hooks often have no trusted_hash. Skipping them leaves
+    // enablement at the old index (now the managed hook) and drops the user's
+    // disablement. Move any enabled/hash row without inventing a hash.
+    if (!state || (state.trustedHash === undefined && state.enabled === undefined)) {
+      return []
+    }
+    return [{ fromKey, toKey, trustedHash: state.trustedHash, enabled: state.enabled }]
   })
   let updated = existing
   // Why: remove old index-addressed user trust blocks before writing the shifted keys so remote prepend does not leave duplicate approvals.
@@ -64,12 +68,7 @@ export function moveHookTrustContent(
     ])
   }
   for (const { toKey, trustedHash, enabled } of resolvedMoves) {
-    updated = upsertTrustBlocks(
-      updated,
-      getTrustKeyWriteVariants(toKey),
-      trustedHash,
-      enabled ?? true
-    )
+    updated = upsertTrustBlocks(updated, getTrustKeyWriteVariants(toKey), trustedHash, enabled)
   }
   return updated
 }
@@ -92,7 +91,7 @@ export function removeHookTrustContent(content: string, keys: readonly string[])
 function upsertTrustBlocks(
   content: string,
   keys: readonly string[],
-  hash: string,
+  hash?: string,
   explicitEnabled?: boolean
 ): string {
   const ranges = getUniqueTrustBlockRanges(content, keys)
@@ -137,7 +136,7 @@ function isBlockDisabled(content: string, range: HookTrustBlockRange): boolean {
 function appendTrustBlocks(
   content: string,
   keys: readonly string[],
-  hash: string,
+  hash: string | undefined,
   enabled: boolean
 ): string {
   const block = buildTrustBlocks(keys, hash, enabled)
@@ -148,16 +147,20 @@ function appendTrustBlocks(
   return `${content}${separator}${block}\n`
 }
 
-function buildTrustBlocks(keys: readonly string[], hash: string, enabled: boolean): string {
+function buildTrustBlocks(
+  keys: readonly string[],
+  hash: string | undefined,
+  enabled: boolean
+): string {
   return keys.map((key) => buildTrustBlock(key, hash, enabled)).join('\n\n')
 }
 
-function buildTrustBlock(key: string, hash: string, enabled: boolean): string {
-  return [
-    `[hooks.state.${formatHookStateTableKey(key)}]`,
-    `enabled = ${enabled}`,
-    `trusted_hash = "${escapeTomlBasicString(hash)}"`
-  ].join('\n')
+function buildTrustBlock(key: string, hash: string | undefined, enabled: boolean): string {
+  const lines = [`[hooks.state.${formatHookStateTableKey(key)}]`, `enabled = ${enabled}`]
+  if (hash) {
+    lines.push(`trusted_hash = "${escapeTomlBasicString(hash)}"`)
+  }
+  return lines.join('\n')
 }
 
 function formatHookStateTableKey(key: string): string {
