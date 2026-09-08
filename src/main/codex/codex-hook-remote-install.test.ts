@@ -133,4 +133,75 @@ describe('Codex remote hook prepend + trust migration', () => {
     expect(hookTrustBlock(toml, `${remoteHooksPath}:stop:0:0`)).not.toContain(userTrustedHash)
     expect(toml).not.toContain(`${remoteHooksPath}:stop:2:0`)
   })
+
+  it('moves a disabled no-hash user hook on SSH and WSL-redirected prepend, including repeats', async () => {
+    const posixHooksPath = '/home/dev/.codex/hooks.json'
+    const wslHooksPath = '/mnt/c/Users/me/.codex/hooks.json'
+    const userA = 'echo user-stop-a'
+    const userB = 'echo user-stop-b'
+    const userBHash = 'sha256:user-b'
+    const seedToml = (hooksPath: string) =>
+      [
+        `[hooks.state."${hooksPath}:stop:0:0"]`,
+        'enabled = false',
+        '',
+        `[hooks.state."${hooksPath}:stop:1:0"]`,
+        'enabled = false',
+        `trusted_hash = "${userBHash}"`,
+        ''
+      ].join('\n')
+    const hooksJson = `${JSON.stringify({
+      hooks: {
+        Stop: [
+          { hooks: [{ type: 'command', command: userA }] },
+          { hooks: [{ type: 'command', command: userB }] }
+        ]
+      }
+    })}\n`
+
+    const { sftp: sshSftp, files: sshFiles } = createFakeSftp({
+      [posixHooksPath]: hooksJson,
+      '/home/dev/.codex/config.toml': seedToml(posixHooksPath)
+    })
+    const { sftp: wslSftp, files: wslFiles } = createFakeSftp({
+      [wslHooksPath]: hooksJson,
+      '/mnt/c/Users/me/.codex/config.toml': seedToml(wslHooksPath)
+    })
+
+    const service = new CodexHookService()
+    const sshFirst = await service.installRemote(sshSftp, '/home/dev')
+    const sshRepeat = await service.installRemote(sshSftp, '/home/dev')
+    const wslFirst = await service.installRemote(wslSftp, '/home/dev', {
+      codexHomeDir: '/mnt/c/Users/me/.codex'
+    })
+    const wslRepeat = await service.installRemote(wslSftp, '/home/dev', {
+      codexHomeDir: '/mnt/c/Users/me/.codex'
+    })
+
+    expect(sshFirst.state).toBe('installed')
+    expect(sshRepeat.state).toBe('installed')
+    expect(wslFirst.state).toBe('installed')
+    expect(wslRepeat.state).toBe('installed')
+
+    for (const [hooksPath, files, tomlPath] of [
+      [posixHooksPath, sshFiles, '/home/dev/.codex/config.toml'],
+      [wslHooksPath, wslFiles, '/mnt/c/Users/me/.codex/config.toml']
+    ] as const) {
+      const hooks = JSON.parse(files.get(hooksPath)!) as {
+        hooks: Record<string, { hooks?: { command?: string }[] }[]>
+      }
+      expect(hooks.hooks.Stop?.[0]?.hooks?.[0]?.command).toContain('codex-hook.sh')
+      expect(hooks.hooks.Stop?.[1]?.hooks?.[0]?.command).toBe(userA)
+      expect(hooks.hooks.Stop?.[2]?.hooks?.[0]?.command).toBe(userB)
+      const toml = files.get(tomlPath) ?? ''
+      const movedA = hookTrustBlock(toml, `${hooksPath}:stop:1:0`)
+      const movedB = hookTrustBlock(toml, `${hooksPath}:stop:2:0`)
+      expect(movedA).toContain('enabled = false')
+      expect(movedA).not.toContain('trusted_hash')
+      expect(movedB).toContain('enabled = false')
+      expect(movedB).toContain(`trusted_hash = "${userBHash}"`)
+      expect(hookTrustBlock(toml, `${hooksPath}:stop:0:0`)).not.toContain(userBHash)
+      expect(toml).not.toContain(`${hooksPath}:stop:3:0`)
+    }
+  })
 })
