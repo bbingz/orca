@@ -13,6 +13,17 @@ export const TerminalFocus = TerminalHandle.extend({
   navigation: z.enum(['caller', 'host']).optional()
 })
 
+/**
+ * `terminal.inspectProcess` carries one member the sibling handle methods must not: whether the
+ * caller's answer decides something once, which is what licenses the host to pay for a process-table
+ * read. Extended rather than added to `TerminalHandle` so `clearBuffer`/`agentStatus`/`isRunningAgent`
+ * keep refusing an option they have no use for.
+ */
+export const TerminalInspectProcess = TerminalHandle.extend({
+  // Additive request member understood by newer hosts; legacy hosts safely ignore it.
+  scanChildProcesses: z.boolean().optional()
+})
+
 export const TerminalListParams = z.object({
   worktree: OptionalString,
   limit: OptionalFiniteNumber,
@@ -23,11 +34,15 @@ export const TerminalListParams = z.object({
   requireFreshPtyLiveness: z.boolean().optional(),
   // Why: layouts are ~31% of a large listing and only the human CLI formatter
   // reads them. Absent means "include" so pre-flag clients keep rendering them.
-  includeVisualLayouts: z.boolean().optional()
+  includeVisualLayouts: z.boolean().optional(),
+  // Why: pty: selectors need a targeted page so large fleets do not miss the id (#13219).
+  ptyId: requiredString('Missing PTY ID').pipe(z.string().max(512)).optional()
 })
 
 export const TerminalResolveActive = z.object({
-  worktree: OptionalString
+  worktree: OptionalString,
+  /** Refuse instead of guessing when several leaves could be the caller's own terminal. */
+  requireUnambiguous: z.boolean().optional()
 })
 
 export const TerminalResolvePane = z.object({
@@ -87,6 +102,8 @@ export const TerminalSend = TerminalHandle.extend({
   interrupt: z.unknown().optional(),
   // Why: older hosts strip this optional intent and retain their direct-send behavior.
   agentPrompt: z.literal(true).optional(),
+  // Why: waiting observes the same prompt receipt; it never authorizes a second write.
+  waitSubmitMs: z.number().int().min(0).max(3_600_000).optional(),
   resolvedLaunchDraft: z
     .object({
       text: z.string(),
