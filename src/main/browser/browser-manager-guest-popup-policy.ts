@@ -16,6 +16,11 @@ import {
 } from './browser-clicked-link-routing'
 import { isNewBrowserTabPopupIntent } from './browser-popup-new-tab-intent'
 import { SAFE_POPUP_WINDOW_OPTIONS, safeOrigin } from './browser-manager-types'
+import {
+  UNKNOWN_EXTERNAL_APP_REQUEST_ORIGIN,
+  originFromGuestDocument,
+  originFromInitiatingFrame
+} from './external-app-request-origin'
 import type { PopupChildWindowOptions } from './popup-origin-bar-window'
 import { BrowserManagerNavigation } from './browser-manager-navigation'
 
@@ -164,7 +169,10 @@ export abstract class BrowserManagerGuestPopupPolicy extends BrowserManagerNavig
           // Why: private frameName path only expects http(s); still hand off custom app schemes (#12719).
           const customApp = classifyExternalAppUrl(url)
           if (customApp.ok && customApp.kind === 'custom') {
-            void this.promptOpenExternalAppScheme(guest, url)
+            const requestingOrigin = iframeRouting
+              ? originFromInitiatingFrame(iframeRouting.frame)
+              : originFromGuestDocument(guest)
+            void this.promptOpenExternalAppScheme(guest, url, requestingOrigin)
           }
         }
         // Why: a recognized gesture must never fall through to a native popup if its renderer vanished mid-click.
@@ -226,7 +234,7 @@ export abstract class BrowserManagerGuestPopupPolicy extends BrowserManagerNavig
         const customApp = classifyExternalAppUrl(url)
         if (customApp.ok && customApp.kind === 'custom') {
           // Why: Okta Verify and similar app schemes must leave the guest; prompt then openExternal (#12719).
-          void this.promptOpenExternalAppScheme(guest, url)
+          void this.promptOpenExternalAppScheme(guest, url, UNKNOWN_EXTERNAL_APP_REQUEST_ORIGIN)
         } else {
           // Why: popup URLs can carry auth redirects/one-time tokens; surface only sanitized origin metadata.
           this.forwardOrQueuePopupEvent(guest.id, {
@@ -263,17 +271,9 @@ export abstract class BrowserManagerGuestPopupPolicy extends BrowserManagerNavig
   /** User-approved OS handoff for custom app schemes (Okta Verify, etc.) (#12719). */
   protected async promptOpenExternalAppScheme(
     guest: Electron.WebContents,
-    url: string
+    url: string,
+    requestingOrigin: string
   ): Promise<void> {
-    let requestingOrigin: string | undefined
-    try {
-      if (!guest.isDestroyed()) {
-        const origin = safeOrigin(guest.getURL())
-        requestingOrigin = origin === 'unknown' ? undefined : origin
-      }
-    } catch {
-      requestingOrigin = undefined
-    }
     const result = await openExternalAppUrlWithUserApproval(url, { requestingOrigin })
     this.forwardOrQueuePopupEvent(guest.id, {
       origin: safeOrigin(url),

@@ -86,6 +86,10 @@ function registerAppSchemeGuest(input: {
     isDestroyed: vi.fn(() => false),
     getType: vi.fn(() => 'webview'),
     getURL: vi.fn(() => 'https://login.example.com/sso'),
+    mainFrame: {
+      url: 'https://login.example.com/sso',
+      isDestroyed: vi.fn(() => false)
+    },
     setBackgroundThrottling: guestSetBackgroundThrottlingMock,
     setWindowOpenHandler: guestSetWindowOpenHandlerMock,
     on: guestOnMock,
@@ -125,6 +129,73 @@ describe('browserManager custom app schemes', () => {
     vi.useRealTimers()
   })
 
+  it('attributes main-frame navigation to the actual initiating iframe', async () => {
+    registerAppSchemeGuest({
+      id: 119,
+      browserPageId: 'iframe-app-scheme-review',
+      rendererSend: vi.fn()
+    })
+    const handler = guestOnMock.mock.calls.find(([event]) => event === 'will-navigate')?.[1]
+    const event = {
+      preventDefault: vi.fn(),
+      isMainFrame: true,
+      frame: { url: 'https://login.example.com/sso' },
+      initiator: { url: 'https://untrusted-frame.example/embedded' }
+    }
+    handler(event, 'oktaverify://bind?token=iframe')
+    await vi.waitFor(() => {
+      expect(openExternalAppUrlWithUserApprovalMock).toHaveBeenCalledWith(
+        'oktaverify://bind?token=iframe',
+        expect.objectContaining({ requestingOrigin: 'https://untrusted-frame.example' })
+      )
+    })
+    expect(event.preventDefault).toHaveBeenCalled()
+  })
+
+  it('attributes will-redirect to the initiating frame, not the destination', async () => {
+    registerAppSchemeGuest({
+      id: 120,
+      browserPageId: 'iframe-app-scheme-redirect',
+      rendererSend: vi.fn()
+    })
+    const handler = guestOnMock.mock.calls.find(([event]) => event === 'will-redirect')?.[1]
+    const event = {
+      preventDefault: vi.fn(),
+      isMainFrame: true,
+      frame: { url: 'https://login.example.com/sso' },
+      initiator: { url: 'https://untrusted-frame.example/redirector' }
+    }
+    handler(event, 'oktaverify://bind?token=redirect', false, true)
+    await vi.waitFor(() => {
+      expect(openExternalAppUrlWithUserApprovalMock).toHaveBeenCalledWith(
+        'oktaverify://bind?token=redirect',
+        expect.objectContaining({ requestingOrigin: 'https://untrusted-frame.example' })
+      )
+    })
+    expect(event.preventDefault).toHaveBeenCalled()
+  })
+
+  it('uses unknown when navigation initiator is missing rather than the top page', async () => {
+    registerAppSchemeGuest({
+      id: 121,
+      browserPageId: 'iframe-app-scheme-unknown',
+      rendererSend: vi.fn()
+    })
+    const handler = guestOnMock.mock.calls.find(([event]) => event === 'will-navigate')?.[1]
+    const event = {
+      preventDefault: vi.fn(),
+      isMainFrame: true,
+      frame: { url: 'https://login.example.com/sso' }
+    }
+    handler(event, 'oktaverify://bind?token=no-initiator')
+    await vi.waitFor(() => {
+      expect(openExternalAppUrlWithUserApprovalMock).toHaveBeenCalledWith(
+        'oktaverify://bind?token=no-initiator',
+        expect.objectContaining({ requestingOrigin: 'unknown' })
+      )
+    })
+  })
+
   it('prompts and opens custom app schemes from popup and will-navigate paths', async () => {
     const rendererSendMock = vi.fn()
     registerAppSchemeGuest({
@@ -140,7 +211,7 @@ describe('browserManager custom app schemes', () => {
     await vi.waitFor(() => {
       expect(openExternalAppUrlWithUserApprovalMock).toHaveBeenCalledWith(
         'oktaverify://bind?token=1',
-        expect.objectContaining({ requestingOrigin: 'https://login.example.com' })
+        expect.objectContaining({ requestingOrigin: 'unknown' })
       )
     })
     expect(rendererSendMock).toHaveBeenCalledWith('browser:popup', {
@@ -161,7 +232,7 @@ describe('browserManager custom app schemes', () => {
     await vi.waitFor(() => {
       expect(openExternalAppUrlWithUserApprovalMock).toHaveBeenCalledWith(
         'oktaverify://bind?token=2',
-        expect.objectContaining({ requestingOrigin: 'https://login.example.com' })
+        expect.objectContaining({ requestingOrigin: 'unknown' })
       )
     })
     expect(rendererSendMock).toHaveBeenCalledWith('browser:popup', {
@@ -264,7 +335,58 @@ describe('browserManager custom app schemes', () => {
     expect(openExternalAppUrlWithUserApprovalMock).toHaveBeenCalledTimes(1)
     expect(openExternalAppUrlWithUserApprovalMock).toHaveBeenCalledWith(
       'oktaverify://bind',
-      expect.objectContaining({ requestingOrigin: 'https://login.example.com' })
+      expect.objectContaining({ requestingOrigin: 'unknown' })
     )
+  })
+
+  it('attributes known iframe clicked-link custom schemes to the iframe origin', async () => {
+    const rendererSendMock = vi.fn()
+    const executeJavaScriptMock = vi.fn().mockResolvedValue(undefined)
+    const frameOnceMock = vi.fn()
+    const frame = {
+      parent: {},
+      url: 'https://untrusted-frame.example/embedded',
+      isDestroyed: vi.fn(() => false),
+      executeJavaScript: executeJavaScriptMock,
+      once: frameOnceMock,
+      off: vi.fn()
+    }
+    registerAppSchemeGuest({
+      id: 122,
+      browserPageId: 'iframe-clicked-app-scheme',
+      executeJavaScriptInIsolatedWorld: vi.fn().mockResolvedValue(undefined),
+      rendererSend: rendererSendMock
+    })
+    const frameCreatedHandler = guestOnMock.mock.calls.find(
+      ([event]) => event === 'frame-created'
+    )?.[1] as ((event: Electron.Event, details: Electron.FrameCreatedDetails) => void) | undefined
+    frameCreatedHandler?.({} as Electron.Event, { frame } as never)
+    const frameDomReadyHandler = frameOnceMock.mock.calls.find(
+      ([event]) => event === 'dom-ready'
+    )?.[1] as (() => void) | undefined
+    frameDomReadyHandler?.()
+    await vi.waitFor(() => expect(executeJavaScriptMock).toHaveBeenCalledTimes(1))
+    const iframeFrameName = (executeJavaScriptMock.mock.calls[0][0] as string).match(
+      /__orca_clicked_link_iframe_foreground_[0-9a-f-]+/
+    )?.[0]
+    if (!iframeFrameName) {
+      throw new Error('Expected a private iframe clicked-link frame name')
+    }
+    const handler = guestSetWindowOpenHandlerMock.mock.calls.at(-1)?.[0] as (details: {
+      url: string
+      frameName: string
+    }) => { action: 'allow' | 'deny' }
+    expect(
+      handler({
+        url: 'oktaverify://bind?from=iframe-click',
+        frameName: iframeFrameName
+      })
+    ).toEqual({ action: 'deny' })
+    await vi.waitFor(() => {
+      expect(openExternalAppUrlWithUserApprovalMock).toHaveBeenCalledWith(
+        'oktaverify://bind?from=iframe-click',
+        expect.objectContaining({ requestingOrigin: 'https://untrusted-frame.example' })
+      )
+    })
   })
 })
