@@ -1,17 +1,11 @@
 import type { GitStatusEntry, GitStatusResult } from '../../shared/git-status-types'
-import type { RuntimeFileOpenResult, RuntimeWorktreeRecord } from '../../shared/runtime-types'
-import {
-  isRuntimePathAbsolute,
-  isWindowsAbsolutePathLike,
-  relativePathInsideRoot,
-  resolveRuntimePath
-} from '../../shared/cross-platform-path'
-import { isWslUncPath, parseWslUncPath, toWindowsWslPath } from '../../shared/wsl-paths'
+import type { RuntimeFileOpenResult } from '../../shared/runtime-types'
 import type { CommandHandler, HandlerContext } from '../dispatch'
 import { getOptionalStringFlag, getRequiredStringFlag } from '../flags'
 import { printResult } from '../format'
 import { RuntimeClientError } from '../runtime-client'
 import { getOptionalWorktreeSelector, resolveCurrentWorktreeSelector } from '../selectors'
+import { resolveFilePath } from './file-open-path'
 
 type FileOpenMode = 'edit' | 'diff'
 type OpenChangedMode = FileOpenMode | 'both'
@@ -50,85 +44,6 @@ async function getFileWorktreeSelector({ flags, cwd, client }: HandlerContext): 
     )
   }
   return await resolveCurrentWorktreeSelector(cwd, client)
-}
-
-/**
- * Why: a WSL workspace stores its worktree root as a Windows UNC path while the
- * user types the Linux path they see inside the distro, so the two never match
- * (#11393). Only the distro the caller is sitting in can name that Linux path, and
- * only a UNC root wants the rewrite — a POSIX root already matches, so rewriting
- * it would strand every absolute path.
- *
- * Backslash is a legal Linux filename character but a separator once the path
- * reads as UNC, so `a\b.ts` would relativize to a different file, `a/b.ts`.
- * Such a path has no Windows spelling; leave it to fail the match instead.
- */
-function toWorktreeRootPathFlavor(rootPath: string, cwd: string, path: string): string {
-  // Why: WSL_DISTRO_NAME reaches this process only if interop forwards it, but the
-  // WSL launcher always sets ORCA_CLI_CWD, and its UNC form names the distro itself.
-  const distro = process.env.WSL_DISTRO_NAME || parseWslUncPath(cwd)?.distro
-  if (
-    !distro ||
-    !path.startsWith('/') ||
-    path.startsWith('//') ||
-    path.includes('\\') ||
-    !isWslUncPath(rootPath)
-  ) {
-    return path
-  }
-  return toWindowsWslPath(path, distro)
-}
-
-async function resolveFilePath(
-  ctx: HandlerContext,
-  worktree: string,
-  path: string
-): Promise<string> {
-  // Why: plain relative paths stay on the single-RPC path. Absolute paths and
-  // parent-segment relatives need the worktree root so we can relativize or
-  // reject outside-worktree targets with an actionable message (#13949).
-  if (!isRuntimePathAbsolute(path) && !pathHasParentSegment(path)) {
-    return path
-  }
-  const result = await ctx.client.call<{ worktree: RuntimeWorktreeRecord }>('worktree.show', {
-    worktree
-  })
-  const worktreePath = result.result.worktree.path
-  const candidate = resolveRuntimePath(
-    ctx.cwd,
-    toWorktreeRootPathFlavor(worktreePath, ctx.cwd, path)
-  )
-  const relativePath = relativePathInsideRoot(worktreePath, candidate)
-  if (relativePath === '') {
-    throw new RuntimeClientError(
-      'invalid_argument',
-      'The selected worktree root is a directory, not a file-open target.'
-    )
-  }
-  if (relativePath !== null) {
-    return relativePath
-  }
-  // Same-flavor outside paths get a CLI error. Cross-flavor misses (WSL UNC vs
-  // Linux spelling, SSH flavor mismatch) still reach the runtime guard.
-  const originalCandidate = resolveRuntimePath(ctx.cwd, path)
-  if (pathHasParentSegment(path) || fileOpenPathsAreComparable(worktreePath, originalCandidate)) {
-    throw new RuntimeClientError(
-      'invalid_argument',
-      `Path is outside the selected worktree (${worktreePath}). ` +
-        '`orca file open` only opens files inside a worktree; pass a path under that root or choose a different --worktree.'
-    )
-  }
-  return path
-}
-
-function fileOpenPathsAreComparable(rootPath: string, candidatePath: string): boolean {
-  const rootWindows = isWindowsAbsolutePathLike(rootPath) || isWslUncPath(rootPath)
-  const candidateWindows = isWindowsAbsolutePathLike(candidatePath) || isWslUncPath(candidatePath)
-  return rootWindows === candidateWindows
-}
-
-function pathHasParentSegment(path: string): boolean {
-  return path.split(/[\\/]/).includes('..')
 }
 
 function getOpenChangedMode(flags: Map<string, string | boolean>): OpenChangedMode {
