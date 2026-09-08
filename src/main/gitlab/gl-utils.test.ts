@@ -317,10 +317,21 @@ describe('gitlab project ref resolution', () => {
       throw new Error(`unexpected git args: ${args.join(' ')}`)
     })
 
+    const originGetUrlCalls = () =>
+      gitExecFileAsyncMock.mock.calls.filter(
+        ([args]) => args[0] === 'remote' && args[1] === 'get-url' && args[2] === 'origin'
+      )
+    const remoteListCalls = () =>
+      gitExecFileAsyncMock.mock.calls.filter(([args]) => args[0] === 'remote' && args.length === 1)
+
     await expect(getProjectRef('/repo')).resolves.toBeNull()
     await expect(getProjectRef('/repo')).resolves.toBeNull()
-    // Why: origin miss is negatively cached; list-remotes still runs once on the first miss.
-    expect(gitExecFileAsyncMock).toHaveBeenCalled()
+    // Why: origin get-url is negatively cached across the two calls (main's
+    // toHaveBeenCalledTimes(1) targeted that probe). listRepoRemoteNames is not
+    // cached and runs on every miss, so a single total-call assertion is no longer
+    // equivalent — do not claim enumeration happens only on the first miss.
+    expect(originGetUrlCalls()).toHaveLength(1)
+    expect(remoteListCalls()).toHaveLength(2)
 
     // Nothing watches `.git/config`, and SSH/WSL repos have no file to watch, so
     // a remote configured after the miss is only visible once the negative ages out.
@@ -331,6 +342,11 @@ describe('gitlab project ref resolution', () => {
       host: 'gitlab.com',
       path: 'fork/orca'
     })
+    // Why: after TTL, origin is re-probed once and hits, so no extra enumeration.
+    // Main asserted total gitExecFileAsync times 2 (1 miss + 1 hit) when getProjectRef
+    // only probed origin; the extra list calls are the new fallback, not a weaker cache.
+    expect(originGetUrlCalls()).toHaveLength(2)
+    expect(remoteListCalls()).toHaveLength(2)
   })
 
   it('keeps a resolved project ref past the negative interval', async () => {
