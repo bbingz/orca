@@ -5,6 +5,7 @@ describe('formatRemoteOrchestrationAsk', () => {
   it('includes outcome/pending on timed-out --json results', () => {
     const formatted = formatRemoteOrchestrationAsk(
       {
+        id: 'req_ask',
         ok: true,
         result: {
           answer: null,
@@ -13,7 +14,8 @@ describe('formatRemoteOrchestrationAsk', () => {
           messageId: 'msg_1',
           threadId: 'thread_1',
           timeoutMs: 1000
-        }
+        },
+        _meta: { runtimeId: 'runtime-test' }
       },
       true
     )
