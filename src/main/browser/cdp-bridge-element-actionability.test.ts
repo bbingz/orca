@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi, type Mock } from 'vitest'
 
 vi.mock('electron', () => ({ webContents: { fromId: vi.fn() } }))
 
@@ -18,9 +18,17 @@ type InteractabilityOptions = {
   slottedInertWrapper?: boolean
 }
 
+type DebuggerSendCommand = (
+  method: string,
+  params?: Record<string, unknown>,
+  sessionId?: string
+) => Promise<unknown>
+
+type DebuggerSendCommandMock = Mock<DebuggerSendCommand>
+
 type TestGuest = {
   id: number
-  debugger: { sendCommand: ReturnType<typeof vi.fn> }
+  debugger: { sendCommand: DebuggerSendCommandMock }
 }
 
 type AttachGuest = TestGuest & {
@@ -150,7 +158,7 @@ function createIframeHarness(options?: {
 }): {
   actionability: CdpElementActionability
   guest: TestGuest
-  sendCommand: ReturnType<typeof vi.fn>
+  sendCommand: DebuggerSendCommandMock
 } {
   const owned = createStack()
   const harnessState = owned.bridgeState.getOrCreateTabState('tab-1')
@@ -170,7 +178,7 @@ function createIframeHarness(options?: {
         ]
       : [['session-2', null]]
   )
-  const sendCommand = vi.fn(
+  const sendCommand: DebuggerSendCommandMock = vi.fn(
     async (method: string, params?: Record<string, unknown>, sessionId?: string) => {
       if (method === 'Page.getFrameTree' && sessionId === 'session-2') {
         return { frameTree: { frame: { id: 'frame-2' } } }
