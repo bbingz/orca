@@ -29,6 +29,8 @@ async function assertBranchNameOverrideSupported(
  * Directory names are sanitized (including `/` → `-`). The git branch can
  * still keep slashes when the caller supplies `--branch`, or when `--name`
  * itself contains `/` (composer branch mode #6721 / CLI #13011).
+ * Why: hosts already run `git check-ref-format --branch` (pre-2.25); CLI
+ * only sends the optional wire field after the protocol 3 / v1.4.5 gate.
  */
 export function resolveCliWorktreeCreateBranchNameOverride(args: {
   name: string
