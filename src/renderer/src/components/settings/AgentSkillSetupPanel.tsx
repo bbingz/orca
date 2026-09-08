@@ -23,6 +23,7 @@ export function AgentSkillSetupPanel({
   description,
   command,
   installedCommand,
+  terminalCommands: terminal,
   terminalTitle,
   terminalAriaLabel,
   terminalWorktreeId,
@@ -75,6 +76,7 @@ export function AgentSkillSetupPanel({
     [getPrerequisiteStatus]
   )
   const activeCommand = installed ? (installedCommand ?? command) : command
+  const activeTerminalCommand = (installed ? terminal?.update : terminal?.install) ?? activeCommand
   // Why: the inline terminal auto-inserts when its command changes, so keep the
   // already-open terminal pinned to the command and runtime selected at click.
   const openTerminalCommand = terminalSnapshot?.copiedCommand ?? activeCommand
@@ -83,7 +85,7 @@ export function AgentSkillSetupPanel({
     if (terminalOpening || setupAttemptRunning) {
       return
     }
-    const nextSnapshot = createTerminalSnapshot(activeCommand, shellOverride, runtime)
+    const nextSnapshot = createTerminalSnapshot(activeTerminalCommand, shellOverride, runtime)
     setTerminalOpening(true)
     if (setupCommandFailedCode !== null) {
       setTerminalOpen(false)
@@ -184,7 +186,9 @@ export function AgentSkillSetupPanel({
 
   const copyActiveCommand = async (): Promise<void> => {
     try {
-      await window.api.ui.writeClipboardText(openTerminalCommand)
+      // Why: the open terminal may be running an unattended command; copy stays
+      // on the interactive string a human can answer (#13542).
+      await window.api.ui.writeClipboardText(activeCommand)
       toast.success(
         translate('auto.components.settings.AgentSkillSetupPanel.copiedCommand', 'Copied command.')
       )
