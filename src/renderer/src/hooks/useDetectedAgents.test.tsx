@@ -346,18 +346,18 @@ describe('useDetectedAgents (local call site)', () => {
         'repo-a:wsl:Ubuntu': false,
         'repo-b:wsl:Debian': false
       }
-    } as never)
+    })
 
-    const targetA = {
+    const targetA: AgentDetectionTarget = {
       kind: 'local',
       worktreeId: 'wt-a',
       contextKey: 'repo-a:wsl:Ubuntu'
-    } as AgentDetectionTarget
-    const targetB = {
+    }
+    const targetB: AgentDetectionTarget = {
       kind: 'local',
       worktreeId: 'wt-b',
       contextKey: 'repo-b:wsl:Debian'
-    } as AgentDetectionTarget
+    }
 
     const root = await renderProbe(targetA)
     expect(detectLocalAgents).toHaveBeenCalledTimes(1)
