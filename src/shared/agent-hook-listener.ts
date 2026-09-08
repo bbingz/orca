@@ -1,6 +1,9 @@
 import { normalizeAgentStatusPayload } from './agent-status-types'
 import type { AgentHookSource } from './agent-hook-relay'
-import { extractAgentProviderSession } from './agent-session-resume'
+import {
+  extractAgentProviderSession,
+  type AgentProviderSessionMetadata
+} from './agent-session-resume'
 import {
   canAcceptClaudeCompactCompletion,
   isClaudeCompactCompletionConsumed,
@@ -36,11 +39,13 @@ export function normalizeHookPayload(
     readFirstString(record, ['hook_event_name', 'hookEventName', 'hook_type', 'hookType']) ??
     hookPayloadRecord.hook_event_name ??
     hookPayloadRecord.hookEventName
-  // Codex child hooks expose the child's session_id on the parent's pane.
+  // Why: Codex child hooks expose the child's session_id on the parent's pane;
+  // treating it as the root resume id would replace the terminal's real session.
+  // SessionStart may cache the root session id before any visible status event.
   const providerSession =
     source === 'codex' && readString(hookPayloadRecord, 'agent_id')
       ? null
-      : extractAgentProviderSession(source, hookPayloadRecord)
+      : (resolveHookProviderSession(state, source, paneKey, hookPayloadRecord) ?? null)
   const providerPromptId =
     source === 'claude' ? normalizeClaudePromptId(hookPayloadRecord.prompt_id) : undefined
   const compactTrigger =
@@ -170,4 +175,21 @@ export function normalizeHookPayload(
     ...(providerSessionOnly ? { providerSessionOnly: true } : {}),
     payload: transportPayload
   }
+}
+
+function resolveHookProviderSession(
+  state: HookListenerState,
+  source: AgentHookSource,
+  paneKey: string,
+  hookPayload: Record<string, unknown>
+): AgentProviderSessionMetadata | undefined {
+  const extracted = extractAgentProviderSession(source, hookPayload) ?? undefined
+  if (source !== 'codex') {
+    return extracted
+  }
+  if (extracted) {
+    state.lastProviderSessionByPaneKey.set(paneKey, extracted)
+    return extracted
+  }
+  return state.lastProviderSessionByPaneKey.get(paneKey)
 }

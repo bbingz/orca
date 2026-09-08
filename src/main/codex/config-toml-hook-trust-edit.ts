@@ -1,4 +1,10 @@
 import type { CodexTrustEntry } from './config-toml-trust'
+import { readHookTrustContent } from './config-toml-hook-trust-read'
+
+export type CodexHookTrustKeyMove = {
+  fromKey: string
+  toKey: string
+}
 import {
   computeCodexTrustedHash,
   computeCodexTrustKey,
@@ -30,6 +36,39 @@ export function upsertHookTrustContent(
       getTrustKeyWriteVariants(computeCodexTrustKey(entry)),
       entry.trustedHash ?? computeCodexTrustedHash(entry),
       entry.enabled
+    )
+  }
+  return updated
+}
+
+export function moveHookTrustContent(
+  existingContent: string,
+  moves: readonly CodexHookTrustKeyMove[]
+): string {
+  const existing = stripLeadingBom(existingContent)
+  const states = readHookTrustContent(existing)
+  const resolvedMoves = moves.flatMap(({ fromKey, toKey }) => {
+    if (normalizeCodexHookTrustLookupKey(fromKey) === normalizeCodexHookTrustLookupKey(toKey)) {
+      return []
+    }
+    const state = states.get(fromKey)
+    return state?.trustedHash
+      ? [{ fromKey, toKey, trustedHash: state.trustedHash, enabled: state.enabled }]
+      : []
+  })
+  let updated = existing
+  // Why: remove old index-addressed user trust blocks before writing the shifted keys so remote prepend does not leave duplicate approvals.
+  if (resolvedMoves.length > 0) {
+    updated = removeHookTrustContent(updated, [
+      ...new Set(resolvedMoves.map(({ fromKey }) => fromKey))
+    ])
+  }
+  for (const { toKey, trustedHash, enabled } of resolvedMoves) {
+    updated = upsertTrustBlocks(
+      updated,
+      getTrustKeyWriteVariants(toKey),
+      trustedHash,
+      enabled ?? true
     )
   }
   return updated

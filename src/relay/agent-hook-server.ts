@@ -39,7 +39,12 @@ import {
   type SpoolRecord
 } from '../shared/agent-hook-spool'
 import { buildRelayHookPtyEnv, defaultEndpointDir } from './agent-hook-endpoint-coordinates'
-import { buildRelayHookEnvelope, hookBodyEnv, hookBodyVersion } from './agent-hook-envelope-build'
+import {
+  buildRelayHookEnvelope,
+  hookBodyEnv,
+  hookBodyPaneKey,
+  hookBodyVersion
+} from './agent-hook-envelope-build'
 import { AgentHookResultRetryScheduler } from './agent-hook-result-retry-scheduler'
 import {
   evictCachedPanesOverCap,
@@ -276,6 +281,8 @@ export class RelayAgentHookServer {
       }
       const body = await readRequestBody(req)
       const hookBody = mergeAgentHookRequestHeaders(body, req.headers)
+      const paneKey = hookBodyPaneKey(hookBody)
+      const previousStatus = paneKey ? this.state.lastStatusByPaneKey.get(paneKey) : undefined
       const event = normalizeHookPayload(this.state, source, hookBody, this.env, {
         deferCompactOwnershipToClient: true
       })
@@ -286,6 +293,17 @@ export class RelayAgentHookServer {
         this.applyEvent(event, source, env, version)
         this.retryScheduler.scheduleAssistantMessageRetry(source, hookBody, event, env, version)
         this.retryScheduler.scheduleCodexSubagentPoll(source, hookBody, event, env, version)
+      } else if (
+        source === 'codex' &&
+        previousStatus &&
+        paneKey &&
+        !this.state.lastStatusByPaneKey.has(paneKey)
+      ) {
+        this.forwardSessionStartClear(
+          previousStatus,
+          hookBodyEnv(hookBody),
+          hookBodyVersion(hookBody)
+        )
       }
       res.writeHead(204)
       res.end()
@@ -302,6 +320,41 @@ export class RelayAgentHookServer {
       res.writeHead(204)
       res.end()
     }
+  }
+
+  private forwardSessionStartClear(
+    previous: AgentHookEventPayload,
+    env?: string,
+    version?: string
+  ): void {
+    if (previous.hookEventName === 'SessionStart') {
+      // Why: normalization removes the prior Codex status before returning null;
+      // restore its tombstone so duplicate hooks neither rebroadcast nor erase replay.
+      this.state.lastStatusByPaneKey.set(previous.paneKey, previous)
+      return
+    }
+    this.retryScheduler.clearAssistantMessageRetry(previous.paneKey)
+    const providerSession = this.state.lastProviderSessionByPaneKey.get(previous.paneKey)
+    // Why: do not publish state:done. Current completion-reactive consumers treat
+    // plain done as a finished turn unless sessionBoundary is set
+    // (agent-completion-hook-observer, automation-dispatch-completion,
+    // agent-completion-time). sessionBoundary is Rule 1 optional — old mains
+    // ignore it and still complete. New main clears on hookEventName SessionStart
+    // and never applies this payload. Old main applies it as working, which is
+    // today's SessionStart mapping, not a new completed-turn signal.
+    // Compatibility limit: old main cannot receive a SessionStart clear without
+    // applying some status; we refuse a false completion over a stale working row.
+    this.applyEvent(
+      {
+        ...previous,
+        hookEventName: 'SessionStart',
+        ...(providerSession ? { providerSession } : {}),
+        payload: { state: 'working', prompt: '', agentType: 'codex' }
+      },
+      'codex',
+      env,
+      version
+    )
   }
 
   private applyEvent(
