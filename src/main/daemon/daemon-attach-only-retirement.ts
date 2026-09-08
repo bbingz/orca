@@ -1,19 +1,28 @@
+import {
+  classifyAttachOnlyKillError,
+  trackAttachOnlyOrphanRisk
+} from './daemon-attach-only-orphan-event'
+import { retireAccidentalAttachOnlySpawn } from './daemon-attach-only-retire'
 import { SessionNotFoundError, TerminalSessionOwnerUnverifiedError } from './daemon-errors'
 
 export async function retireUnexpectedAttachOnlySpawn(
+  protocolVersion: number,
   sessionId: string,
-  retire: () => Promise<unknown>
+  kill: () => Promise<unknown>
 ): Promise<void> {
-  try {
-    await retire()
-  } catch (error) {
-    if (error instanceof SessionNotFoundError) {
-      return
+  const retire = await retireAccidentalAttachOnlySpawn({
+    kill: async () => {
+      await kill()
     }
-    console.warn('[daemon] attach-only retire of unexpected spawn failed', {
-      sessionId,
-      error
-    })
-    throw new TerminalSessionOwnerUnverifiedError(sessionId)
+  })
+  if (retire.ok || retire.error instanceof SessionNotFoundError) {
+    return
   }
+  const killErrorClass = classifyAttachOnlyKillError(retire.error)
+  console.error(
+    '[daemon] attach-only retire of accidental legacy spawn failed; orphan may remain',
+    { protocolVersion, killErrorClass }
+  )
+  trackAttachOnlyOrphanRisk({ protocolVersion, killErrorClass })
+  throw new TerminalSessionOwnerUnverifiedError(sessionId)
 }
