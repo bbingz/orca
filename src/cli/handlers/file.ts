@@ -123,8 +123,7 @@ async function resolveFilePath(
 
 function fileOpenPathsAreComparable(rootPath: string, candidatePath: string): boolean {
   const rootWindows = isWindowsAbsolutePathLike(rootPath) || isWslUncPath(rootPath)
-  const candidateWindows =
-    isWindowsAbsolutePathLike(candidatePath) || isWslUncPath(candidatePath)
+  const candidateWindows = isWindowsAbsolutePathLike(candidatePath) || isWslUncPath(candidatePath)
   return rootWindows === candidateWindows
 }
 
