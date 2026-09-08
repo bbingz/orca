@@ -83,10 +83,10 @@ export class CdpElementStateCommands extends CdpBridgeCommandModule {
       const node = await this.resolveRef(guest, sender, element)
       const refSender = this.senderForRef(guest, node)
 
-      const { nodeId } = (await refSender('DOM.requestNode', {
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: DOM.resolveNode returns objectId
+      const { object } = (await refSender('DOM.resolveNode', {
         backendNodeId: node.backendDOMNodeId
-      })) as { nodeId: number }
-      const { object } = (await refSender('DOM.resolveNode', { nodeId })) as {
+      })) as {
         object: { objectId: string }
       }
 
@@ -98,7 +98,11 @@ export class CdpElementStateCommands extends CdpBridgeCommandModule {
 
       if (currentState.value !== checked) {
         await this.scrollIntoView(refSender, node.backendDOMNodeId)
-        const localCenter = await this.getElementCenter(refSender, node.backendDOMNodeId)
+        const localCenter = await this.getElementCenter(refSender, node.backendDOMNodeId, element)
+        await this.assertElementInteractable(refSender, node.backendDOMNodeId, element, {
+          pointerCenter: localCenter,
+          requireEnabled: true
+        })
         const { cx, cy } = await this.getPageCoordinates(
           guest,
           node,

@@ -104,6 +104,7 @@ export class CdpBridgeState {
         debuggerDetachListener: null,
         debuggerMessageListener: null,
         iframeSessions: new Map(),
+        iframeParentSessions: new Map(),
         capturing: false,
         consoleLog: [],
         networkLog: [],

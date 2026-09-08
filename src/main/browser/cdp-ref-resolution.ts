@@ -5,12 +5,17 @@ import type { CdpCommandSender, RefEntry } from './snapshot-engine'
 import type { CdpBridgeState } from './cdp-bridge-state'
 import type { CdpDebuggerLifecycle } from './cdp-debugger-lifecycle'
 import type { CdpNavigationOperations } from './cdp-navigation-operations'
+import type {
+  CdpElementActionability,
+  ElementActionabilityRequirements
+} from './cdp-element-actionability'
 
 export class CdpRefResolution {
   constructor(
     private readonly bridgeState: CdpBridgeState,
     private readonly debuggerLifecycle: CdpDebuggerLifecycle,
-    private readonly navigation: CdpNavigationOperations
+    private readonly navigation: CdpNavigationOperations,
+    private readonly actionability: CdpElementActionability
   ) {}
 
   senderForRef(guest: WebContents, ref: RefEntry): CdpCommandSender {
@@ -69,8 +74,8 @@ export class CdpRefResolution {
   }
 
   async scrollIntoView(sender: CdpCommandSender, backendNodeId: number): Promise<void> {
-    const { nodeId } = (await sender('DOM.requestNode', { backendNodeId })) as { nodeId: number }
-    const { object } = (await sender('DOM.resolveNode', { nodeId })) as {
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: DOM.resolveNode returns objectId
+    const { object } = (await sender('DOM.resolveNode', { backendNodeId })) as {
       object: { objectId: string }
     }
     await sender('Runtime.callFunctionOn', {
@@ -79,93 +84,31 @@ export class CdpRefResolution {
     })
   }
 
-  async getElementCenter(
+  assertElementInteractable(
     sender: CdpCommandSender,
-    backendNodeId: number
-  ): Promise<{ cx: number; cy: number }> {
-    const { model } = (await sender('DOM.getBoxModel', { backendNodeId })) as {
-      model: { content: number[] }
-    }
-    const [x1, y1, , , x3, y3] = model.content
-    return { cx: (x1 + x3) / 2, cy: (y1 + y3) / 2 }
+    backendNodeId: number,
+    ref: string,
+    requirements?: ElementActionabilityRequirements
+  ): Promise<void> {
+    return this.actionability.assertElementInteractable(sender, backendNodeId, ref, requirements)
   }
 
-  private async getIframeOffset(
-    guest: WebContents,
-    sessionId: string
-  ): Promise<{ offsetX: number; offsetY: number }> {
-    const tabId = this.resolveTabId(guest.id)
-    const state = this.getOrCreateTabState(tabId)
-    const parentSender = this.makeCdpSender(guest)
-
-    for (const [targetId, sid] of state.iframeSessions) {
-      if (sid === sessionId) {
-        try {
-          const { targetInfo } = (await parentSender('Target.getTargetInfo', {
-            targetId
-          })) as { targetInfo: { url?: string } }
-
-          const targetUrl = targetInfo?.url
-
-          const { result } = (await parentSender('Runtime.evaluate', {
-            expression: `(() => {
-              const frames = document.querySelectorAll('iframe, frame');
-              const rects = [];
-              for (const f of frames) {
-                const rect = f.getBoundingClientRect();
-                rects.push({ x: rect.x, y: rect.y, src: f.src || '' });
-              }
-              return JSON.stringify(rects);
-            })()`,
-            returnByValue: true
-          })) as { result: { value: string } }
-
-          const rects = JSON.parse(result.value) as { x: number; y: number; src: string }[]
-
-          if (targetUrl) {
-            for (const rect of rects) {
-              if (rect.src === targetUrl) {
-                return { offsetX: rect.x, offsetY: rect.y }
-              }
-            }
-            // Redirects can change the target URL while preserving the iframe’s origin.
-            try {
-              const targetOrigin = new URL(targetUrl).origin
-              for (const rect of rects) {
-                if (rect.src && new URL(rect.src).origin === targetOrigin) {
-                  return { offsetX: rect.x, offsetY: rect.y }
-                }
-              }
-            } catch {
-              // Invalid URLs still allow the single-iframe fallback.
-            }
-          }
-
-          if (rects.length === 1) {
-            return { offsetX: rects[0].x, offsetY: rects[0].y }
-          }
-        } catch {
-          // If discovery fails, keep local coordinates as a best-effort fallback.
-        }
-        break
-      }
-    }
-
-    return { offsetX: 0, offsetY: 0 }
+  getElementCenter(
+    sender: CdpCommandSender,
+    backendNodeId: number,
+    ref?: string
+  ): Promise<{ cx: number; cy: number }> {
+    return this.actionability.getElementCenter(sender, backendNodeId, ref)
   }
 
   // Input events use parent-page coordinates; iframe node geometry is frame-local.
-  async getPageCoordinates(
+  getPageCoordinates(
     guest: WebContents,
     refEntry: RefEntry,
     localCx: number,
     localCy: number
   ): Promise<{ cx: number; cy: number }> {
-    if (!refEntry.sessionId) {
-      return { cx: localCx, cy: localCy }
-    }
-    const { offsetX, offsetY } = await this.getIframeOffset(guest, refEntry.sessionId)
-    return { cx: localCx + offsetX, cy: localCy + offsetY }
+    return this.actionability.getPageCoordinates(guest, refEntry, localCx, localCy)
   }
 
   // Prefer the snapshot ordinal among duplicate role/name matches before other live nodes.
