@@ -185,11 +185,11 @@ how to use that URL from a machine you actually work on.
 
 ### Pick the right remote path first
 
-| Goal | Prefer |
-| --- | --- |
+| Goal                                                                                            | Prefer                                                                                                        |
+| ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
 | Drive the **existing** desktop Orca on a machine you can log into (same projects, agents, auth) | **SSH host** from the Orca desktop sidebar, or a reverse tunnel into that desktop — not a second `orca serve` |
-| Run a **headless** runtime that has no local UI (VPS, CI box, always-on server) | **`orca serve`** + remote-server pairing (this guide) |
-| Reach the runtime from a phone or browser without installing the desktop app | Mobile app pairing, or the `webClientUrl` printed with the ready JSON |
+| Run a **headless** runtime that has no local UI (VPS, CI box, always-on server)                 | **`orca serve`** + remote-server pairing (this guide)                                                         |
+| Reach the runtime from a phone or browser without installing the desktop app                    | Mobile app pairing, or the `webClientUrl` printed with the ready JSON                                         |
 
 Installing `orca serve` as a dedicated service user creates an **empty** Orca
 profile: none of the projects, worktrees, agent sessions, or CLI auth from a
