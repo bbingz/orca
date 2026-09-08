@@ -184,7 +184,7 @@ export class CdpElementActionability {
         'Could not resolve the iframe owner. Re-snapshot and retry.'
       )
     }
-    const { result } = (await sender('Runtime.callFunctionOn', {
+    const { result, exceptionDetails } = (await sender('Runtime.callFunctionOn', {
       objectId: object.objectId,
       functionDeclaration: `function(cx, cy) {
         const root = typeof this.getRootNode === 'function' ? this.getRootNode() : this.ownerDocument;
@@ -193,7 +193,13 @@ export class CdpElementActionability {
       }`,
       arguments: [{ value: cx }, { value: cy }],
       returnByValue: true
-    })) as { result?: { value?: unknown } }
+    })) as { result?: { value?: unknown }; exceptionDetails?: unknown }
+    if (exceptionDetails) {
+      throw new BrowserError(
+        'browser_cdp_error',
+        'Could not check whether the iframe receives pointer input.'
+      )
+    }
     if (result?.value !== true) {
       throw new BrowserError(
         'browser_element_not_interactable',
