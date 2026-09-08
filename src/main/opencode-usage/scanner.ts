@@ -1,5 +1,5 @@
 import { yieldToEventLoop } from '../../shared/event-loop-yield'
-import Database from '../sqlite/sync-database'
+import { openOpenCodeDatabaseReadonly } from '../ai-vault/session-scanner-opencode-sqlite-open'
 import { createUsageEventAggregation } from '../usage/usage-event-aggregation'
 import {
   compareOpenCodeClaimPriority,
@@ -54,9 +54,8 @@ export async function parseOpenCodeUsageDatabase(
   options: { claimSession?: (sessionId: string) => boolean } = {}
 ): Promise<OpenCodeUsagePersistedDatabase> {
   const processedDatabase = await getProcessedDatabaseInfo(dbPath)
-  const db = new Database(dbPath, { readonly: true, fileMustExist: true })
+  const db = openOpenCodeDatabaseReadonly(dbPath)
   try {
-    db.pragma('query_only = ON')
     const events: OpenCodeUsageAttributedEvent[] = []
     const claimedBySessionId = new Map<string, boolean>()
     let hasDeferredClaims = false

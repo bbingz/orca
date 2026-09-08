@@ -2,13 +2,14 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Worker } from 'node:worker_threads'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AiVaultScanIssue } from '../../shared/ai-vault-types'
 import Database from '../sqlite/sync-database'
 import { listOpenCodeSqliteSessions } from './session-scanner-opencode-sqlite-list'
 import {
   openCodeBusyTimeoutMs,
   openCodeDatabaseScanIssue,
+  openOpenCodeDatabaseReadonly,
   readOpenCodeDatabase
 } from './session-scanner-opencode-sqlite-open'
 
@@ -20,6 +21,7 @@ let tempDirs: string[] = []
 let lockHolders: Worker[] = []
 
 afterEach(async () => {
+  vi.restoreAllMocks()
   await Promise.all(lockHolders.splice(0).map((worker) => worker.terminate()))
   lockHolders = []
   for (const dir of tempDirs) {
@@ -66,20 +68,29 @@ const LOCK_HOLDER_SOURCE = `
   db.exec('BEGIN EXCLUSIVE')
   db.exec("INSERT INTO session (id, time_created, time_updated) VALUES ('locked-write', 1, 1)")
   parentPort.postMessage('locked')
-  setTimeout(() => {
-    db.exec('ROLLBACK')
-    db.close()
-    parentPort.postMessage('released')
-  }, workerData.holdMs)
+  parentPort.once('message', (message) => {
+    if (message !== 'reader-started') {
+      throw new Error('Unexpected lock-holder message')
+    }
+    setTimeout(() => {
+      db.exec('ROLLBACK')
+      db.close()
+      parentPort.postMessage('released')
+    }, workerData.releaseDelayMs)
+  })
 `
 
-async function holdWriteLock(path: string, holdMs: number): Promise<void> {
-  const worker = new Worker(LOCK_HOLDER_SOURCE, { eval: true, workerData: { path, holdMs } })
+async function holdWriteLock(path: string, releaseDelayMs: number): Promise<Worker> {
+  const worker = new Worker(LOCK_HOLDER_SOURCE, {
+    eval: true,
+    workerData: { path, releaseDelayMs }
+  })
   lockHolders.push(worker)
   await new Promise<void>((resolve, reject) => {
     worker.once('message', () => resolve())
     worker.once('error', reject)
   })
+  return worker
 }
 
 describe('listOpenCodeSqliteSessions against a database OpenCode is writing to', () => {
@@ -117,9 +128,9 @@ describe('listOpenCodeSqliteSessions against a database OpenCode is writing to',
 
   it('reads the sessions once the write finishes inside the busy timeout', async () => {
     const path = seededDatabase('opencode.db', 'session-a')
-    // Long enough that only a real busy timeout — not a lucky fast open — survives it.
-    await holdWriteLock(path, 900)
+    const worker = await holdWriteLock(path, 200)
     const issues: AiVaultScanIssue[] = []
+    worker.postMessage('reader-started')
 
     const candidates = await listOpenCodeSqliteSessions({ dbPaths: [path], limit: 10, issues })
 
@@ -144,6 +155,34 @@ describe('readOpenCodeDatabase', () => {
 
     expect(rows).toEqual([{ id: 'session-a' }])
     expect(() => captured!.prepare('SELECT 1')).toThrow(/not open/i)
+  })
+
+  it('closes the handle when query_only setup fails', () => {
+    const path = seededDatabase('opencode.db', 'session-a')
+    const setupError = new Error('query_only setup failed')
+    vi.spyOn(Database.prototype, 'pragma').mockImplementationOnce(() => {
+      throw setupError
+    })
+    const closeSpy = vi.spyOn(Database.prototype, 'close')
+
+    expect(() => openOpenCodeDatabaseReadonly(path)).toThrow(setupError)
+    expect(closeSpy).toHaveBeenCalledOnce()
+  })
+
+  it('preserves the setup error when closing also fails', () => {
+    const path = seededDatabase('opencode.db', 'session-a')
+    const setupError = new Error('query_only setup failed')
+    const closeError = new Error('close failed')
+    const originalClose = Database.prototype.close
+    vi.spyOn(Database.prototype, 'pragma').mockImplementationOnce(() => {
+      throw setupError
+    })
+    vi.spyOn(Database.prototype, 'close').mockImplementationOnce(function (this: Database) {
+      originalClose.call(this)
+      throw closeError
+    })
+
+    expect(() => openOpenCodeDatabaseReadonly(path)).toThrow(setupError)
   })
 
   it('closes the handle when the read throws', () => {
