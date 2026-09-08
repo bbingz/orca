@@ -133,6 +133,8 @@ export abstract class BrowserManagerState extends BrowserManagerViewportScrollSt
   // Why: debugger detach drops Emulation.* state; retain the user-selected preset so a later
   // reapply can restore metrics without attaching guests that have no preset.
   protected readonly viewportOverrideByTabId = new Map<string, BrowserViewportOverride>()
+  // Why: an older in-flight doSet must not overwrite a newer queued set/clear after its own CDP step.
+  protected readonly viewportOverrideRequestGenerationByTabId = new Map<string, number>()
   // Why: the confirmed CDP identity outranks getUserAgent; pending intent keeps rapid navigations
   // ordered without claiming a failed write was installed.
   protected readonly authUserAgentOverrideStateByGuestId = new Map<
