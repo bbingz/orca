@@ -1,6 +1,6 @@
 import type { HookDefinition } from '../agent-hooks/installer-utils'
 import { createCodexHookTrustEntry, getCodexHookTrustSignature } from './codex-hook-identity'
-import { CODEX_EVENTS } from './codex-hook-definition'
+import type { CODEX_EVENTS } from './codex-hook-definition'
 import {
   computeTrustKey,
   type CodexHookTrustKeyMove,

@@ -27,17 +27,8 @@ import {
   describeHookTransportInterference,
   isHookRequestTruncatedError
 } from '../shared/agent-hook-transport-interference'
-import {
-  isAgentHookSource,
-  REMOTE_AGENT_HOOK_ENV,
-  type AgentHookRelayEnvelope,
-  type AgentHookSource
-} from '../shared/agent-hook-relay'
-import {
-  buildSpoolHookBody,
-  drainAgentHookSpool,
-  type SpoolRecord
-} from '../shared/agent-hook-spool'
+import { REMOTE_AGENT_HOOK_ENV, type AgentHookSource } from '../shared/agent-hook-relay'
+import { drainAgentHookSpool } from '../shared/agent-hook-spool'
 import { buildRelayHookPtyEnv, defaultEndpointDir } from './agent-hook-endpoint-coordinates'
 import {
   buildRelayHookEnvelope,
@@ -46,12 +37,16 @@ import {
   hookBodyVersion
 } from './agent-hook-envelope-build'
 import { AgentHookResultRetryScheduler } from './agent-hook-result-retry-scheduler'
+import { selectReplayableCachedPanes } from './agent-hook-cached-pane-status'
 import {
-  evictCachedPanesOverCap,
-  selectReplayableCachedPanes
-} from './agent-hook-cached-pane-status'
+  applyRelayHookEvent,
+  forwardSessionStartClear,
+  ingestRelaySpoolRecord,
+  type RelayHookEventApplyHost,
+  type RelayHookForward
+} from './agent-hook-relay-event-apply'
 
-export type RelayHookForward = (envelope: AgentHookRelayEnvelope) => void
+export type { RelayHookForward }
 
 export type RelayHookServerOptions = {
   /** Where to put endpoint.env / endpoint.cmd. Defaults to `$HOME/.orca-relay/agent-hooks`. */
@@ -130,7 +125,7 @@ export class RelayAgentHookServer {
       drainAgentHookSpool({
         endpointDir: this.endpointDir,
         getPersistedLaunchTokenHash: () => undefined,
-        ingest: (record) => this.ingestSpoolRecord(record)
+        ingest: (record) => ingestRelaySpoolRecord(this.eventApplyHost(), record)
       })
     } catch (err) {
       // Why: a downstream relay failure must not prevent the loopback listener from starting;
@@ -299,7 +294,8 @@ export class RelayAgentHookServer {
         paneKey &&
         !this.state.lastStatusByPaneKey.has(paneKey)
       ) {
-        this.forwardSessionStartClear(
+        forwardSessionStartClear(
+          this.eventApplyHost(),
           previousStatus,
           hookBodyEnv(hookBody),
           hookBodyVersion(hookBody)
@@ -322,39 +318,17 @@ export class RelayAgentHookServer {
     }
   }
 
-  private forwardSessionStartClear(
-    previous: AgentHookEventPayload,
-    env?: string,
-    version?: string
-  ): void {
-    if (previous.hookEventName === 'SessionStart') {
-      // Why: normalization removes the prior Codex status before returning null;
-      // restore its tombstone so duplicate hooks neither rebroadcast nor erase replay.
-      this.state.lastStatusByPaneKey.set(previous.paneKey, previous)
-      return
+  private eventApplyHost(): RelayHookEventApplyHost {
+    return {
+      state: this.state,
+      lastEnvelopeMetaByPaneKey: this.lastEnvelopeMetaByPaneKey,
+      isPaneSurfaceRetired: this.isPaneSurfaceRetired,
+      clearPaneState: (paneKey) => this.clearPaneState(paneKey),
+      clearAssistantMessageRetry: (paneKey) =>
+        this.retryScheduler.clearAssistantMessageRetry(paneKey),
+      forward: this.forward,
+      env: this.env
     }
-    this.retryScheduler.clearAssistantMessageRetry(previous.paneKey)
-    const providerSession = this.state.lastProviderSessionByPaneKey.get(previous.paneKey)
-    // Why: do not publish state:done. Current completion-reactive consumers treat
-    // plain done as a finished turn unless sessionBoundary is set
-    // (agent-completion-hook-observer, automation-dispatch-completion,
-    // agent-completion-time). sessionBoundary is Rule 1 optional — old mains
-    // ignore it and still complete. New main clears on hookEventName SessionStart
-    // and never applies this payload. Old main applies it as working, which is
-    // today's SessionStart mapping, not a new completed-turn signal.
-    // Compatibility limit: old main cannot receive a SessionStart clear without
-    // applying some status; we refuse a false completion over a stale working row.
-    this.applyEvent(
-      {
-        ...previous,
-        hookEventName: 'SessionStart',
-        ...(providerSession ? { providerSession } : {}),
-        payload: { state: 'working', prompt: '', agentType: 'codex' }
-      },
-      'codex',
-      env,
-      version
-    )
   }
 
   private applyEvent(
@@ -364,43 +338,6 @@ export class RelayAgentHookServer {
     version?: string,
     options: { isReplay?: boolean } = {}
   ): void {
-    // Why: this post came from a process still running inside a pane whose tab the user closed.
-    // Caching or forwarding it makes every connected client advertise a live, resumable agent pane
-    // that no tab owns — the advertisement that ends up auto-typing a second `--resume` onto a
-    // transcript the orphan is still writing (#12447). Drop the stale cache with it.
-    if (this.isPaneSurfaceRetired(event.paneKey)) {
-      this.clearPaneState(event.paneKey)
-      return
-    }
-    if (event.payload.state !== 'done' || event.payload.lastAssistantMessage) {
-      this.retryScheduler.clearAssistantMessageRetry(event.paneKey)
-    }
-    // Why: keep PostCompact identity in the replay cache so the client can re-run ownership when
-    // it reconnects. Stripping it would let a cold relay replay a completion as an ordinary `done`
-    // row and resurrect a pane that the client had already retired.
-    const cachedEvent = event
-    // Why: delete-then-set makes Map insertion order = recency, so the cap below evicts the longest-idle pane.
-    this.state.lastStatusByPaneKey.delete(event.paneKey)
-    this.state.lastStatusByPaneKey.set(event.paneKey, cachedEvent)
-    this.lastEnvelopeMetaByPaneKey.delete(event.paneKey)
-    this.lastEnvelopeMetaByPaneKey.set(event.paneKey, { source, env, version })
-    evictCachedPanesOverCap(this.state.lastStatusByPaneKey, (key) => this.clearPaneState(key))
-    this.forward(buildRelayHookEnvelope(event, source, env, version, options))
-  }
-
-  private ingestSpoolRecord(record: SpoolRecord): void {
-    if (!isAgentHookSource(record.source)) {
-      return
-    }
-    const body = buildSpoolHookBody(record)
-    const event = normalizeHookPayload(this.state, record.source, body, this.env, {
-      deferCompactOwnershipToClient: true
-    })
-    if (!event) {
-      return
-    }
-    this.applyEvent(event, record.source, hookBodyEnv(body), hookBodyVersion(body), {
-      isReplay: true
-    })
+    applyRelayHookEvent(this.eventApplyHost(), event, source, env, version, options)
   }
 }
