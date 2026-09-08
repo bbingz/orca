@@ -38,7 +38,8 @@ function completionEntry(overrides: {
     state: overrides.state,
     updatedAt: overrides.updatedAt ?? 2_000,
     stateStartedAt: overrides.stateStartedAt ?? 1_500,
-    sessionBoundary: overrides.sessionBoundary
+    sessionBoundary: overrides.sessionBoundary,
+    stateHistory: []
   }
 }
 
