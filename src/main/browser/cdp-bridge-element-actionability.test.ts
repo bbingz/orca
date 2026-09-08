@@ -375,6 +375,21 @@ describe('CDP element actionability', () => {
     expect(sendCommand).toHaveBeenCalledWith('Page.getFrameTree', undefined, 'session-2')
   })
 
+  it('preserves an iframe hit-test evaluation exception as a CDP error', async () => {
+    const { actionability, guest, sendCommand } = createIframeHarness()
+    const original = sendCommand.getMockImplementation()!
+    sendCommand.mockImplementation(async (...args) => {
+      if (args[0] === 'Runtime.callFunctionOn') {
+        return { result: {}, exceptionDetails: { text: 'Uncaught TypeError' } }
+      }
+      return original(...args)
+    })
+    const entry = { backendDOMNodeId: 7, sessionId: 'session-2' } as RefEntry
+    await expect(
+      actionability.getPageCoordinates(guest as never, entry, 20, 30)
+    ).rejects.toMatchObject({ code: 'browser_cdp_error' })
+  })
+
   it('rejects an iframe pointer target covered in the parent page', async () => {
     const { actionability, guest } = createIframeHarness({ covered: true })
     const entry = { backendDOMNodeId: 7, sessionId: 'session-2' } as RefEntry
