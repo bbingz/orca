@@ -62,7 +62,7 @@ export abstract class DaemonPtySpawnResult extends DaemonPtySpawnRequest {
     }
     if (attachOnly && result.isNew) {
       operation.ignoreNextExit = true
-      await retireUnexpectedAttachOnlySpawn(requestedSessionId, () =>
+      await retireUnexpectedAttachOnlySpawn(this.protocolVersion, requestedSessionId, () =>
         this.client.request('kill', { sessionId: requestedSessionId, immediate: true })
       )
       throw new SessionNotFoundError(requestedSessionId)
