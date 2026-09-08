@@ -5,7 +5,7 @@ export function formatTerminalCommandFlagHelp(command: string, flag: string): st
     return '--tab                  Close the whole tab and wait for durable persistence'
   }
   if (command === 'terminal send' && flag === 'text') {
-    return "--text <text>          Raw PTY bytes (verbatim). Bash/Zsh ANSI-C: $'\\x1b' Escape, $'\\x15' Ctrl+U"
+    return "--text <text>          Raw PTY bytes without --enter. Bash/Zsh ANSI-C: $'\\x1b' Escape, $'\\x15' Ctrl+U"
   }
   if (command === 'terminal send' && flag === 'interrupt') {
     return '--interrupt            Append Ctrl+C (\\x03); other control sequences use --text'
