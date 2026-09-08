@@ -1,6 +1,7 @@
 // @ts-nocheck -- mechanically split from OrcaRuntimeService; behavior is covered by AST equivalence and characterization tests.
 import { OrcaRuntimeWithMergePreservedHeadlessMobileSessionTabs } from './orca-runtime-merge-preserved-headless-mobile-session-tabs'
 import type {
+  RuntimeMobileSessionBrowserTab,
   RuntimeMobileSessionSnapshotTab,
   RuntimeMobileSessionTabsRemovedResult,
   RuntimeMobileSessionTabsSnapshot
@@ -110,6 +111,70 @@ export class OrcaRuntimeWithStoredMobileSnapshotHasStalePreservedTab extends Orc
   protected isHeadlessBuiltMobileSessionPublicationBase(publicationEpoch: string): boolean {
     const base = publicationEpoch.split(':headless-merge:')[0]
     return base.startsWith('headless:') || base.startsWith('headless-hydrated:')
+  }
+
+  protected getAcceptedRendererIdentityKeysForMobileSessionSnapshot(
+    snapshot: RuntimeMobileSessionTabsSnapshot
+  ): ReadonlySet<string> | null {
+    const baseEpoch = snapshot.publicationEpoch.split(':headless-merge:')[0]
+    const accepted = this.acceptedRendererMobileSnapshotByWorktree.get(snapshot.worktree)
+    return accepted?.publicationEpoch === baseEpoch ? accepted.rendererTabIdentityKeys : null
+  }
+
+  protected isHeadlessOwnedMobileBrowserTab(
+    snapshot: RuntimeMobileSessionTabsSnapshot,
+    tab: RuntimeMobileSessionBrowserTab
+  ): boolean {
+    if (this.isHeadlessBuiltMobileSessionPublicationBase(snapshot.publicationEpoch)) {
+      return true
+    }
+    if (!snapshot.publicationEpoch.includes(':headless-merge:')) {
+      return false
+    }
+    const rendererTabIdentityKeys =
+      this.getAcceptedRendererIdentityKeysForMobileSessionSnapshot(snapshot)
+    if (!rendererTabIdentityKeys) {
+      return false
+    }
+    return !getMobileSessionSnapshotTabIdentityKeys(tab).some((id) =>
+      rendererTabIdentityKeys.has(id)
+    )
+  }
+
+  protected isRendererOwnedMobileBrowserTab(
+    snapshot: RuntimeMobileSessionTabsSnapshot,
+    tab: RuntimeMobileSessionBrowserTab
+  ): boolean {
+    if (tab.placement?.kind === 'client') {
+      return false
+    }
+    return !this.isHeadlessOwnedMobileBrowserTab(snapshot, tab)
+  }
+
+  protected getMobileSessionPublicationEpochAfterHeadlessBrowserChange(
+    snapshot: RuntimeMobileSessionTabsSnapshot,
+    nextTabs: readonly RuntimeMobileSessionSnapshotTab[],
+    headlessEpochPrefix: 'headless' | 'headless-hydrated'
+  ): string {
+    if (this.isHeadlessBuiltMobileSessionPublicationBase(snapshot.publicationEpoch)) {
+      return `${headlessEpochPrefix}:${Date.now().toString(36)}`
+    }
+    const rendererTabIdentityKeys =
+      this.getAcceptedRendererIdentityKeysForMobileSessionSnapshot(snapshot)
+    if (!rendererTabIdentityKeys) {
+      return snapshot.publicationEpoch
+    }
+    const preservedTabs = nextTabs.filter(
+      (tab) =>
+        !getMobileSessionSnapshotTabIdentityKeys(tab).some((id) => rendererTabIdentityKeys.has(id))
+    )
+    const baseEpoch = snapshot.publicationEpoch.split(':headless-merge:')[0]
+    return preservedTabs.length === 0
+      ? baseEpoch
+      : this.getMergedMobileSessionPublicationEpoch(
+          { ...snapshot, publicationEpoch: baseEpoch },
+          preservedTabs
+        )
   }
 
   protected getMergedMobileSessionPublicationEpoch(
