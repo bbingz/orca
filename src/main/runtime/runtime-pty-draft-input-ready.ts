@@ -26,6 +26,7 @@ export function waitForPtyDraftInputReady(
     let hardTimer: NodeJS.Timeout | null = null
     let unsubscribeData: (() => void) | null = null
     let unsubscribeExit: (() => void) | null = null
+    let listenersBound = false
 
     const onAbort = (): void => {
       fail(new Error('request_aborted'))
@@ -52,7 +53,9 @@ export function waitForPtyDraftInputReady(
         return
       }
       settled = true
-      cleanup()
+      if (listenersBound) {
+        cleanup()
+      }
       resolve(value)
     }
 
@@ -61,7 +64,9 @@ export function waitForPtyDraftInputReady(
         return
       }
       settled = true
-      cleanup()
+      if (listenersBound) {
+        cleanup()
+      }
       reject(error)
     }
 
@@ -103,7 +108,14 @@ export function waitForPtyDraftInputReady(
       }
       fail(new Error('terminal_exited'))
     })
-    signal?.addEventListener('abort', onAbort, { once: true })
+    if (!settled) {
+      signal?.addEventListener('abort', onAbort, { once: true })
+    }
+    listenersBound = true
+    if (settled) {
+      cleanup()
+      return
+    }
     if (abortIfRequested()) {
       return
     }
