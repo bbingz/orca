@@ -6,6 +6,8 @@ import {
   normalizeExternalBrowserUrl,
   redactKagiSessionToken
 } from '../../shared/browser-url'
+import { classifyExternalAppUrl } from '../../shared/external-app-url'
+import { openExternalAppUrlWithUserApproval } from '../external-app-url-open'
 import {
   BROWSER_CLICKED_LINK_ROUTING_WORLD_ID,
   buildBrowserClickedLinkRoutingScript,
@@ -158,6 +160,12 @@ export abstract class BrowserManagerGuestPopupPolicy extends BrowserManagerNavig
             origin: safeOrigin(browserUrl),
             action: 'opened-in-orca'
           })
+        } else {
+          // Why: private frameName path only expects http(s); still hand off custom app schemes (#12719).
+          const customApp = classifyExternalAppUrl(url)
+          if (customApp.ok && customApp.kind === 'custom') {
+            void this.promptOpenExternalAppScheme(guest, url)
+          }
         }
         // Why: a recognized gesture must never fall through to a native popup if its renderer vanished mid-click.
         return { action: 'deny' }
@@ -215,11 +223,17 @@ export abstract class BrowserManagerGuestPopupPolicy extends BrowserManagerNavig
           action: 'opened-external'
         })
       } else {
-        // Why: popup URLs can carry auth redirects/one-time tokens; surface only sanitized origin metadata.
-        this.forwardOrQueuePopupEvent(guest.id, {
-          origin: safeOrigin(url),
-          action: 'blocked'
-        })
+        const customApp = classifyExternalAppUrl(url)
+        if (customApp.ok && customApp.kind === 'custom') {
+          // Why: Okta Verify and similar app schemes must leave the guest; prompt then openExternal (#12719).
+          void this.promptOpenExternalAppScheme(guest, url)
+        } else {
+          // Why: popup URLs can carry auth redirects/one-time tokens; surface only sanitized origin metadata.
+          this.forwardOrQueuePopupEvent(guest.id, {
+            origin: safeOrigin(url),
+            action: 'blocked'
+          })
+        }
       }
       return { action: 'deny' }
     })
@@ -244,5 +258,26 @@ export abstract class BrowserManagerGuestPopupPolicy extends BrowserManagerNavig
         // guest may already be destroyed
       }
     }
+  }
+
+  /** User-approved OS handoff for custom app schemes (Okta Verify, etc.) (#12719). */
+  protected async promptOpenExternalAppScheme(
+    guest: Electron.WebContents,
+    url: string
+  ): Promise<void> {
+    let requestingOrigin: string | undefined
+    try {
+      if (!guest.isDestroyed()) {
+        const origin = safeOrigin(guest.getURL())
+        requestingOrigin = origin === 'unknown' ? undefined : origin
+      }
+    } catch {
+      requestingOrigin = undefined
+    }
+    const result = await openExternalAppUrlWithUserApproval(url, { requestingOrigin })
+    this.forwardOrQueuePopupEvent(guest.id, {
+      origin: safeOrigin(url),
+      action: result === 'opened' ? 'opened-external' : 'blocked'
+    })
   }
 }

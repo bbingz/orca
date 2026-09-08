@@ -2,6 +2,7 @@ import {
   normalizeBrowserNavigationUrl,
   toSecureCertificateEndpoint
 } from '../../shared/browser-url'
+import { classifyExternalAppUrl } from '../../shared/external-app-url'
 import { isChromiumInternalErrorUrl } from './browser-manager-types'
 import { BrowserManagerGuestPopupPolicy } from './browser-manager-guest-popup-policy'
 
@@ -16,6 +17,16 @@ export abstract class BrowserManagerGuestNavigationPolicy extends BrowserManager
       if (url.startsWith('file:')) {
         event.preventDefault()
         return false
+      }
+      // Why: chrome-error:// is Chromium's failure document, not an OS app scheme.
+      if (!isChromiumInternalErrorUrl(url)) {
+        const customApp = classifyExternalAppUrl(url)
+        if (customApp.ok && customApp.kind === 'custom') {
+          // Why: will-navigate is sync; deny in-guest load then prompt for OS handoff (#12719).
+          event.preventDefault()
+          void this.promptOpenExternalAppScheme(guest, url)
+          return false
+        }
       }
       if (!normalizeBrowserNavigationUrl(url)) {
         // Why: will-attach-webview only validates the initial src; keep enforcing the allowlist on later navs.
