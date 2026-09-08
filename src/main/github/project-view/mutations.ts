@@ -52,14 +52,22 @@ export async function updateIssueBySlug(
     if (body !== undefined) {
       payload.body = body
     }
-    const result = await withGhApiJsonInput(payload, (inputArgs) =>
-      runRest<unknown>(
-        ['-X', 'PATCH', base, ...inputArgs],
-        undefined,
-        'core',
-        projectGhExecOptions(args.host)
-      )
-    )
+    const result =
+      body === undefined
+        ? await runRest<unknown>(
+            ['-X', 'PATCH', base, '--raw-field', `title=${title}`],
+            undefined,
+            'core',
+            projectGhExecOptions(args.host)
+          )
+        : await withGhApiJsonInput(payload, (inputArgs) =>
+            runRest<unknown>(
+              ['-X', 'PATCH', base, ...inputArgs],
+              undefined,
+              'core',
+              projectGhExecOptions(args.host)
+            )
+          )
     if (!result.ok) {
       return { ok: false, error: result.error }
     }

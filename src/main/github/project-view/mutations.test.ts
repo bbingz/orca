@@ -237,7 +237,7 @@ describe('updateIssueBySlug', () => {
       { encoding: 'utf-8', host: 'github.corp.example' }
     )
     expect(runRestMock).toHaveBeenCalledWith(
-      ['-X', 'PATCH', 'repos/acme/widgets/issues/12', '--input', expect.any(String)],
+      ['-X', 'PATCH', 'repos/acme/widgets/issues/12', '--raw-field', 'title=New title'],
       undefined,
       'core',
       { host: 'github.corp.example' }
