@@ -77,7 +77,8 @@ it('preserves renderer browser ownership across headless reconciliation and clos
   } satisfies RuntimeMobileSessionSnapshotTab
   const mergedSnapshot: RuntimeMobileSessionTabsSnapshot = {
     ...rendererSnapshot,
-    publicationEpoch: 'epoch-1:headless-merge:runtime-page',
+    // Why: current getMerged keeps the renderer publisher epoch unchanged.
+    publicationEpoch: rendererSnapshot.publicationEpoch,
     tabs: [...rendererSnapshot.tabs, headlessTab]
   }
   runtime['acceptedRendererMobileSnapshotByWorktree'].set(TEST_WORKTREE_ID, {
@@ -138,7 +139,7 @@ it('preserves renderer browser ownership across headless reconciliation and clos
   } as never)
   const detachedSnapshot = runtime['buildPreservedHeadlessMobileSessionSnapshot']({
     ...afterHeadlessClose,
-    publicationEpoch: 'epoch-1:headless-merge:runtime-page',
+    publicationEpoch: afterHeadlessClose.publicationEpoch,
     tabs: [...afterHeadlessClose.tabs, headlessTab]
   })!
   runtime['acceptedRendererMobileSnapshotByWorktree'].delete(TEST_WORKTREE_ID)
@@ -153,4 +154,45 @@ it('preserves renderer browser ownership across headless reconciliation and clos
   await runtime.closeMobileSessionTab(`id:${TEST_WORKTREE_ID}`, 'headless-page-1')
   expect(closeSessionTab).not.toHaveBeenCalled()
   expect(closeTab).toHaveBeenCalledWith('headless-page-1')
+})
+
+it('still preserves live offscreen pages from a legacy merge-suffix snapshot', () => {
+  const runtime = new OrcaRuntimeService(store)
+  runtime.setOffscreenBrowserBackend({ closeTab: vi.fn() } as never)
+  runtime.setAgentBrowserBridge({
+    tabList: () => ({
+      tabs: [
+        {
+          browserPageId: 'headless-page-1',
+          title: 'Headless Browser',
+          url: 'https://headless.example/'
+        }
+      ]
+    })
+  } as never)
+  const headlessTab = {
+    type: 'browser' as const,
+    id: 'headless-page-1',
+    title: 'Headless Browser',
+    browserWorkspaceId: 'headless-page-1',
+    browserPageId: 'headless-page-1',
+    url: 'https://headless.example/',
+    loading: false,
+    canGoBack: false,
+    canGoForward: false,
+    isActive: false
+  }
+  const snapshot: RuntimeMobileSessionTabsSnapshot = {
+    worktree: TEST_WORKTREE_ID,
+    publicationEpoch: 'epoch-1:headless-merge:runtime-page',
+    snapshotVersion: 1,
+    activeGroupId: 'group-1',
+    activeTabId: 'headless-page-1',
+    activeTabType: 'browser',
+    tabs: [headlessTab]
+  }
+  runtime['acceptedRendererMobileSnapshotByWorktree'].delete(TEST_WORKTREE_ID)
+  const preserved = runtime['buildPreservedHeadlessMobileSessionSnapshot'](snapshot)
+  expect(preserved?.publicationEpoch).toMatch(/^headless-hydrated:/)
+  expect(preserved?.tabs).toEqual([expect.objectContaining({ id: 'headless-page-1' })])
 })

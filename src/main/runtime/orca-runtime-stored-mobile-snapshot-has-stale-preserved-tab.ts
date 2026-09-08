@@ -67,12 +67,12 @@ export class OrcaRuntimeWithStoredMobileSnapshotHasStalePreservedTab extends Orc
       if (!this.offscreenBrowserBackend) {
         return false
       }
-      // Why: in a renderer-based merged snapshot the browser entries can also
-      // be renderer-owned, so only pages the offscreen bridge still lists are
-      // runtime-owned and preservable; a pure renderer epoch preserves none.
+      // Why: current merges keep the renderer publisher epoch unchanged, so
+      // runtime-owned pages are those absent from the accepted identity set.
+      // `:headless-merge:` remains a legacy marker when that pair is gone.
       return (
         this.isHeadlessBuiltMobileSessionPublicationBase(snapshot.publicationEpoch) ||
-        (snapshot.publicationEpoch.includes(':headless-merge:') &&
+        (this.isRuntimeOwnedBrowserOnRendererPublication(snapshot, tab) &&
           typeof tab.browserPageId === 'string' &&
           this.getLiveBrowserTabsByPageId(snapshot.worktree).has(tab.browserPageId))
       )
@@ -121,6 +121,23 @@ export class OrcaRuntimeWithStoredMobileSnapshotHasStalePreservedTab extends Orc
     return accepted?.publicationEpoch === baseEpoch ? accepted.rendererTabIdentityKeys : null
   }
 
+  // Why: current getMerged keeps the renderer publisher epoch; accepted
+  // identity is the owner split. Legacy `:headless-merge:` still names a
+  // mixed snapshot when that pair is missing.
+  protected isRuntimeOwnedBrowserOnRendererPublication(
+    snapshot: RuntimeMobileSessionTabsSnapshot,
+    tab: RuntimeMobileSessionBrowserTab
+  ): boolean {
+    const rendererTabIdentityKeys =
+      this.getAcceptedRendererIdentityKeysForMobileSessionSnapshot(snapshot)
+    if (rendererTabIdentityKeys) {
+      return !getMobileSessionSnapshotTabIdentityKeys(tab).some((id) =>
+        rendererTabIdentityKeys.has(id)
+      )
+    }
+    return snapshot.publicationEpoch.includes(':headless-merge:')
+  }
+
   protected isHeadlessOwnedMobileBrowserTab(
     snapshot: RuntimeMobileSessionTabsSnapshot,
     tab: RuntimeMobileSessionBrowserTab
@@ -128,17 +145,14 @@ export class OrcaRuntimeWithStoredMobileSnapshotHasStalePreservedTab extends Orc
     if (this.isHeadlessBuiltMobileSessionPublicationBase(snapshot.publicationEpoch)) {
       return true
     }
-    if (!snapshot.publicationEpoch.includes(':headless-merge:')) {
-      return false
-    }
     const rendererTabIdentityKeys =
       this.getAcceptedRendererIdentityKeysForMobileSessionSnapshot(snapshot)
-    if (!rendererTabIdentityKeys) {
-      return false
+    if (rendererTabIdentityKeys) {
+      return !getMobileSessionSnapshotTabIdentityKeys(tab).some((id) =>
+        rendererTabIdentityKeys.has(id)
+      )
     }
-    return !getMobileSessionSnapshotTabIdentityKeys(tab).some((id) =>
-      rendererTabIdentityKeys.has(id)
-    )
+    return false
   }
 
   protected isRendererOwnedMobileBrowserTab(

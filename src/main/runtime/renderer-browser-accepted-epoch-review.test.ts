@@ -32,3 +32,46 @@ it('does not publish unknown-owner offscreen rows into an unaccepted renderer ep
   runtime['reconcileHeadlessMobileSessionBrowserTabs'](TEST_WORKTREE_ID, snapshot)
   expect(runtime['mobileSessionTabsByWorktree'].get(TEST_WORKTREE_ID)).toEqual(snapshot)
 })
+
+it('classifies headless rows added under the current unchanged renderer epoch', () => {
+  const runtime = new OrcaRuntimeService(store)
+  const tab = {
+    type: 'browser' as const,
+    id: 'offscreen-new',
+    browserWorkspaceId: 'offscreen-new',
+    browserPageId: 'offscreen-new',
+    title: 'Headless',
+    url: 'https://example.com/',
+    loading: false,
+    canGoBack: false,
+    canGoForward: false,
+    isActive: false
+  }
+  const snapshot: RuntimeMobileSessionTabsSnapshot = {
+    worktree: TEST_WORKTREE_ID,
+    publicationEpoch: 'renderer-accepted',
+    snapshotVersion: 1,
+    activeGroupId: null,
+    activeTabId: null,
+    activeTabType: null,
+    tabs: []
+  }
+  runtime['acceptedRendererMobileSnapshotByWorktree'].set(TEST_WORKTREE_ID, {
+    publicationEpoch: snapshot.publicationEpoch,
+    rendererVersion: 1,
+    rendererTabCount: 0,
+    rendererTabIdentityKeys: new Set<string>()
+  })
+  const epoch = runtime['getMobileSessionPublicationEpochAfterHeadlessBrowserChange'](
+    snapshot,
+    [tab],
+    'headless-hydrated'
+  )
+  expect(epoch).toBe(snapshot.publicationEpoch)
+  expect(
+    runtime['isHeadlessOwnedMobileBrowserTab'](
+      { ...snapshot, publicationEpoch: epoch, tabs: [tab] },
+      tab
+    )
+  ).toBe(true)
+})
