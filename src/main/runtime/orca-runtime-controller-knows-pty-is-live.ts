@@ -9,6 +9,7 @@ import {
 } from './terminal-send-payload'
 import { buildAgentPromptPasteBytes } from '../../shared/agent-prompt-injection'
 import { waitForPtyDraftInputReady } from './runtime-pty-draft-input-ready'
+import { agentSessionPtyWriteGate } from './agent-session-pty-write-gate'
 
 export class OrcaRuntimeWithControllerKnowsPtyIsLive extends OrcaRuntimeWithResolveTerminalPane {
   protected controllerKnowsPtyIsLive(ptyId: string): boolean {
@@ -136,6 +137,8 @@ export class OrcaRuntimeWithControllerKnowsPtyIsLive extends OrcaRuntimeWithReso
       }
       await assertTerminalInputWithinLimitWithYield(payload)
       const generation = this.getPtyLifecycleGeneration(pty.pty.ptyId)
+      // Why: native/Structured Chat can own the pane with no composer; wait would hide typed refusal.
+      agentSessionPtyWriteGate.assertAdmitted(pty.pty.ptyId)
       await this.waitForCodexPromptComposer(pty.pty.ptyId, options.signal)
       if (
         this.getPtyLifecycleGeneration(pty.pty.ptyId) !== generation ||
@@ -180,6 +183,7 @@ export class OrcaRuntimeWithControllerKnowsPtyIsLive extends OrcaRuntimeWithReso
     }
     const ptyId = leaf.ptyId
     const generation = this.getPtyLifecycleGeneration(ptyId)
+    agentSessionPtyWriteGate.assertAdmitted(ptyId)
     await this.waitForCodexPromptComposer(ptyId, options.signal)
     if (this.getPtyLifecycleGeneration(ptyId) !== generation) {
       throw new Error('terminal_exited')

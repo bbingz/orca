@@ -1,5 +1,10 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AGENT_PROMPT_BRACKETED_PASTE_END } from '../../shared/agent-prompt-injection'
+import {
+  agentSessionLeaseFixture,
+  agentSessionRecordFixture
+} from '../../shared/agent-session-record.test-fixture'
+import { agentSessionPtyWriteGate } from './agent-session-pty-write-gate'
 import { createAgentPromptSubmissionRuntime } from './agent-prompt-submission-runtime-test-fixture'
 import { acknowledgeAgentPromptSubmit } from './orca-runtime-test-mocks.spec'
 
@@ -27,6 +32,10 @@ vi.mock('../git/worktree', () => ({
 }))
 
 describe('Codex composer wait before prompt paste', () => {
+  afterEach(() => {
+    agentSessionPtyWriteGate.detachRecordLookup()
+  })
+
   it('waits for Codex composer readiness before writing prompt bytes', async () => {
     vi.useFakeTimers()
     try {
@@ -119,5 +128,46 @@ describe('Codex composer wait before prompt paste', () => {
 
     await rejection
     expect(writes).toEqual([])
+  })
+
+  it('refuses a native-owned Codex pane before waiting for a composer', async () => {
+    vi.useFakeTimers()
+    try {
+      const { runtime, handle, writes } = await createAgentPromptSubmissionRuntime(
+        () => undefined,
+        'codex'
+      )
+      const record = agentSessionRecordFixture(agentSessionLeaseFixture({ runtimeKind: 'native' }))
+      agentSessionPtyWriteGate.attachRecordLookup((sessionId) =>
+        sessionId === record.sessionId ? record : null
+      )
+      agentSessionPtyWriteGate.bindPty('pty-prompt', record.sessionId)
+
+      let failure: unknown
+      const pending = runtime
+        .sendTerminalAgentPrompt(handle, 'review this change')
+        .catch((error) => {
+          failure = error
+        })
+      await vi.advanceTimersByTimeAsync(1)
+
+      expect(failure).toMatchObject({
+        name: 'AgentSessionPtyWriteRefusedError',
+        refusal: expect.objectContaining({
+          code: 'agent_session_conflict',
+          ownerRuntimeKind: 'native'
+        })
+      })
+      expect(writes).toEqual([])
+      await vi.advanceTimersByTimeAsync(20_000)
+      expect(failure).toMatchObject({
+        name: 'AgentSessionPtyWriteRefusedError',
+        refusal: expect.objectContaining({ code: 'agent_session_conflict' })
+      })
+      expect(writes).toEqual([])
+      await pending
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
