@@ -41,11 +41,12 @@ export function normalizeHookPayload(
     hookPayloadRecord.hookEventName
   // Why: Codex child hooks expose the child's session_id on the parent's pane;
   // treating it as the root resume id would replace the terminal's real session.
-  // SessionStart may cache the root session id before any visible status event.
-  const providerSession =
-    source === 'codex' && readString(hookPayloadRecord, 'agent_id')
-      ? null
-      : (resolveHookProviderSession(state, source, paneKey, hookPayloadRecord) ?? null)
+  // Peek only — cache writes wait until a root event is accepted, except the
+  // intentional SessionStart metadata write inside normalizeCodexEvent.
+  const isCodexChild = source === 'codex' && Boolean(readString(hookPayloadRecord, 'agent_id'))
+  const providerSession = isCodexChild
+    ? null
+    : (resolveHookProviderSession(state, source, paneKey, hookPayloadRecord) ?? null)
   const providerPromptId =
     source === 'claude' ? normalizeClaudePromptId(hookPayloadRecord.prompt_id) : undefined
   const compactTrigger =
@@ -131,6 +132,12 @@ export function normalizeHookPayload(
   if (!transportPayload) {
     return null
   }
+  if (source === 'codex' && !isCodexChild) {
+    const extracted = extractAgentProviderSession(source, hookPayloadRecord)
+    if (extracted) {
+      state.lastProviderSessionByPaneKey.set(paneKey, extracted)
+    }
+  }
 
   return {
     paneKey,
@@ -187,9 +194,5 @@ function resolveHookProviderSession(
   if (source !== 'codex') {
     return extracted
   }
-  if (extracted) {
-    state.lastProviderSessionByPaneKey.set(paneKey, extracted)
-    return extracted
-  }
-  return state.lastProviderSessionByPaneKey.get(paneKey)
+  return extracted ?? state.lastProviderSessionByPaneKey.get(paneKey)
 }

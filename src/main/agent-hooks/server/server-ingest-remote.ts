@@ -247,10 +247,16 @@ export abstract class AgentHookServerIngestRemote extends AgentHookServerIngestT
       // consumers unless sessionBoundary is stamped, and that flag is optional
       // so old clients ignore it (remote-wire Rule 3). Clear the stale row and
       // keep session identity for the next real status event.
+      // Identity and clear share one owner fence: a foreign connection must not
+      // replace the current resume id while leaving the visible row intact.
+      const expectedConnectionId = trimmedConnectionId ?? undefined
+      if (!this.canApplyCodexSessionStart(previousStatus, expectedConnectionId)) {
+        return
+      }
       if (providerSession) {
         this.state.lastProviderSessionByPaneKey.set(paneKey, providerSession)
       }
-      this.clearStatusForSessionStart(paneKey, undefined, trimmedConnectionId ?? undefined)
+      this.clearStatusForSessionStart(paneKey, previousStatus, expectedConnectionId)
       return
     }
     const event = {
