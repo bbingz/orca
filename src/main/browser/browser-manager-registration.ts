@@ -138,6 +138,7 @@ export abstract class BrowserManagerRegistration extends BrowserManagerGuestPoli
     this.viewportOpsByTabId.delete(browserTabId)
     this.viewportUaOverrideMobileByTabId.delete(browserTabId)
     this.viewportOverrideByTabId.delete(browserTabId)
+    this.viewportOverrideRequestGenerationByTabId.delete(browserTabId)
     this.viewportPresetActiveByTabId.delete(browserTabId)
     this.viewportScrollStateByTabId.delete(browserTabId)
     if (wcId !== undefined) {
@@ -211,6 +212,7 @@ export abstract class BrowserManagerRegistration extends BrowserManagerGuestPoli
     this.sessionProfileIdByPageId.clear()
     this.viewportUaOverrideMobileByTabId.clear()
     this.viewportOverrideByTabId.clear()
+    this.viewportOverrideRequestGenerationByTabId.clear()
     this.viewportPresetActiveByTabId.clear()
     this.viewportScrollStateByTabId.clear()
     this.authUserAgentOverrideStateByGuestId.clear()
