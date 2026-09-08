@@ -290,6 +290,90 @@ describe('useDetectedAgents (local call site)', () => {
     expect(detectLocalAgents).toHaveBeenCalledTimes(2)
     expect(useAppStore.getState().detectedAgentIds).toEqual(['grok'])
   })
+
+  it('retries each distinct cached-empty local context once on the same surface', async () => {
+    detectLocalAgents.mockReset().mockResolvedValue([])
+    useAppStore.setState({
+      projects: [
+        {
+          id: 'repo-a',
+          localWindowsRuntimePreference: { kind: 'wsl', distro: 'Ubuntu' }
+        },
+        {
+          id: 'repo-b',
+          localWindowsRuntimePreference: { kind: 'wsl', distro: 'Debian' }
+        }
+      ],
+      repos: [
+        {
+          id: 'repo-a',
+          path: '\\\\wsl.localhost\\Ubuntu\\home\\alice\\a',
+          displayName: 'WSL A',
+          badgeColor: '#000000',
+          addedAt: 0
+        },
+        {
+          id: 'repo-b',
+          path: '\\\\wsl.localhost\\Debian\\home\\alice\\b',
+          displayName: 'WSL B',
+          badgeColor: '#000000',
+          addedAt: 0
+        }
+      ],
+      worktreesByRepo: {
+        'repo-a': [
+          {
+            id: 'wt-a',
+            repoId: 'repo-a',
+            path: '\\\\wsl.localhost\\Ubuntu\\home\\alice\\a',
+            displayName: 'main'
+          }
+        ],
+        'repo-b': [
+          {
+            id: 'wt-b',
+            repoId: 'repo-b',
+            path: '\\\\wsl.localhost\\Debian\\home\\alice\\b',
+            displayName: 'main'
+          }
+        ]
+      },
+      localDetectedAgentIdsByContext: {
+        'repo-a:wsl:Ubuntu': [],
+        'repo-b:wsl:Debian': []
+      },
+      isDetectingLocalAgentsByContext: {
+        'repo-a:wsl:Ubuntu': false,
+        'repo-b:wsl:Debian': false
+      }
+    } as never)
+
+    const targetA = {
+      kind: 'local',
+      worktreeId: 'wt-a',
+      contextKey: 'repo-a:wsl:Ubuntu'
+    } as AgentDetectionTarget
+    const targetB = {
+      kind: 'local',
+      worktreeId: 'wt-b',
+      contextKey: 'repo-b:wsl:Debian'
+    } as AgentDetectionTarget
+
+    const root = await renderProbe(targetA)
+    expect(detectLocalAgents).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      root.render(createElement(HookProbe, { target: targetB }))
+    })
+    await flushEffects()
+    expect(detectLocalAgents).toHaveBeenCalledTimes(2)
+
+    await act(async () => {
+      root.render(createElement(HookProbe, { target: targetA }))
+    })
+    await flushEffects()
+    expect(detectLocalAgents).toHaveBeenCalledTimes(2)
+  })
 })
 
 describe('useDetectedAgents (runtime call site)', () => {
