@@ -2,9 +2,9 @@
  * Pre-v31 daemons ignore `attachOnly`, so attach can accidentally spawn a shell.
  * Retire that spawn before refusing the attach (#12662 / #12589).
  *
- * One kill only: the kill RPC is session-id keyed (not incarnation-fenced), so a
- * retry after an ambiguous timeout can murder a legitimate re-create under the
- * same stable id. Observability of a failed retire is the support surface.
+ * Retire only through recognized `killOwned`. If the spawn result has no
+ * incarnation, or the peer does not implement `killOwned`, skip kill and fail
+ * closed. Ordinary `kill` is unchanged. One attempt only.
  */
 
 export type AttachOnlyRetireResult = { ok: true } | { ok: false; error: unknown }
