@@ -144,6 +144,33 @@ describe('relay workspace space scan du handling', () => {
     }
   )
 
+  it.skipIf(process.platform === 'win32')(
+    'kills streaming du when the relay request becomes stale without an abort signal',
+    async () => {
+      const child = createSpawnedDu()
+      spawnMock.mockReturnValue(child)
+      let stale = false
+      const context = { ...createContext(), isStale: () => stale }
+      const scanPromise = scanWorkspaceSpaceDirectory(tempDir!, context)
+      const rejection = expect(scanPromise).rejects.toMatchObject({
+        name: 'RelayWorkspaceSpaceScanCancelledError'
+      })
+      await vi.waitFor(() => expect(spawnMock).toHaveBeenCalled())
+      child.stdout.emit('data', Buffer.from(`4\t${tempDir!}\n`))
+      stale = true
+      child.stdout.emit('data', Buffer.from(`8\t${tempDir!}\n`))
+      try {
+        expect(child.kill).toHaveBeenCalledTimes(1)
+        child.stdout.emit('data', Buffer.from(`12\t${tempDir!}\n`))
+        expect(child.kill).toHaveBeenCalledTimes(1)
+      } finally {
+        child.emit('close', 0)
+        await rejection
+      }
+      expect(execFileMock).not.toHaveBeenCalled()
+    }
+  )
+
   it('falls back accurately when native du is unavailable', async () => {
     await mkdir(join(tempDir!, 'node_modules'), { recursive: true })
     await writeFile(join(tempDir!, 'node_modules', 'pkg.js'), Buffer.alloc(512))
