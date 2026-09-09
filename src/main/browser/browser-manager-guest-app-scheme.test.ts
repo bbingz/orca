@@ -314,7 +314,54 @@ describe('browserManager custom app schemes', () => {
     willNavigateHandler?.({ preventDefault: javascriptPreventDefault }, 'javascript:alert(1)')
     expect(javascriptPreventDefault).toHaveBeenCalled()
 
+    const devtoolsPreventDefault = vi.fn()
+    willNavigateHandler?.(
+      { preventDefault: devtoolsPreventDefault },
+      'devtools://devtools/bundled/inspector.html'
+    )
+    expect(devtoolsPreventDefault).toHaveBeenCalled()
+
     expect(openExternalAppUrlWithUserApprovalMock).not.toHaveBeenCalled()
+  })
+
+  it('blocks extra custom-scheme prompts while one is already pending for the guest', async () => {
+    let releaseFirst!: (value: 'opened') => void
+    openExternalAppUrlWithUserApprovalMock.mockImplementationOnce(
+      () =>
+        new Promise<'opened'>((resolve) => {
+          releaseFirst = resolve
+        })
+    )
+    const rendererSendMock = vi.fn()
+    registerAppSchemeGuest({
+      id: 131,
+      browserPageId: 'browser-app-scheme-inflight',
+      rendererSend: rendererSendMock
+    })
+    const handler = guestSetWindowOpenHandlerMock.mock.calls.at(-1)?.[0] as (details: {
+      url: string
+    }) => { action: 'allow' | 'deny' }
+    expect(handler({ url: 'oktaverify://one' })).toEqual({ action: 'deny' })
+    await vi.waitFor(() => {
+      expect(openExternalAppUrlWithUserApprovalMock).toHaveBeenCalledTimes(1)
+    })
+    expect(handler({ url: 'oktaverify://two' })).toEqual({ action: 'deny' })
+    await vi.waitFor(() => {
+      expect(rendererSendMock).toHaveBeenCalledWith('browser:popup', {
+        browserPageId: 'browser-app-scheme-inflight',
+        origin: 'null',
+        action: 'blocked'
+      })
+    })
+    expect(openExternalAppUrlWithUserApprovalMock).toHaveBeenCalledTimes(1)
+    releaseFirst('opened')
+    await vi.waitFor(() => {
+      expect(rendererSendMock).toHaveBeenCalledWith('browser:popup', {
+        browserPageId: 'browser-app-scheme-inflight',
+        origin: 'null',
+        action: 'opened-external'
+      })
+    })
   })
 
   it('denies native child windows and does not prompt for denied popup schemes', () => {

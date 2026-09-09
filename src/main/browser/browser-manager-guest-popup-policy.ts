@@ -25,6 +25,10 @@ import type { PopupChildWindowOptions } from './popup-origin-bar-window'
 import { BrowserManagerNavigation } from './browser-manager-navigation'
 
 export abstract class BrowserManagerGuestPopupPolicy extends BrowserManagerNavigation {
+  // Why: will-navigate + window.open can loop app schemes; one in-flight prompt
+  // per guest bounds the shared dialog queue instead of serial dismissals.
+  private readonly pendingExternalAppSchemePrompts = new Set<number>()
+
   protected installGuestPopupPolicy(
     guest: Electron.WebContents,
     routeClickedLinks: boolean
@@ -262,6 +266,7 @@ export abstract class BrowserManagerGuestPopupPolicy extends BrowserManagerNavig
           iframeFrameNamesByFrame.clear()
           iframeRoutingByFrameName.clear()
         }
+        this.pendingExternalAppSchemePrompts.delete(guest.id)
       } catch {
         // guest may already be destroyed
       }
@@ -274,10 +279,19 @@ export abstract class BrowserManagerGuestPopupPolicy extends BrowserManagerNavig
     url: string,
     requestingOrigin: string
   ): Promise<void> {
-    const result = await openExternalAppUrlWithUserApproval(url, { requestingOrigin })
-    this.forwardOrQueuePopupEvent(guest.id, {
-      origin: safeOrigin(url),
-      action: result === 'opened' ? 'opened-external' : 'blocked'
-    })
+    if (this.pendingExternalAppSchemePrompts.has(guest.id)) {
+      this.forwardOrQueuePopupEvent(guest.id, { origin: safeOrigin(url), action: 'blocked' })
+      return
+    }
+    this.pendingExternalAppSchemePrompts.add(guest.id)
+    try {
+      const result = await openExternalAppUrlWithUserApproval(url, { requestingOrigin })
+      this.forwardOrQueuePopupEvent(guest.id, {
+        origin: safeOrigin(url),
+        action: result === 'opened' ? 'opened-external' : 'blocked'
+      })
+    } finally {
+      this.pendingExternalAppSchemePrompts.delete(guest.id)
+    }
   }
 }
