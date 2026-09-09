@@ -315,25 +315,28 @@ describe('absolute file CLI paths', () => {
     })
   })
 
-  it('rejects outside-worktree absolute paths with an actionable error', async () => {
-    const absolutePath = '/tmp/elsewhere/App.tsx'
-    queueFixtures(
-      callMock,
-      okFixture('req_show', { worktree: buildWorktree('/tmp/repo', 'feature') })
-    )
+  it.each(['open', 'diff'])(
+    'rejects outside-worktree file %s paths with a command-neutral error',
+    async (command) => {
+      const absolutePath = '/tmp/elsewhere/App.tsx'
+      queueFixtures(
+        callMock,
+        okFixture('req_show', { worktree: buildWorktree('/tmp/repo', 'feature') })
+      )
 
-    await main(['file', 'open', '--path', absolutePath, '--worktree', 'id:wt-1'], '/tmp')
+      await main(['file', command, '--path', absolutePath, '--worktree', 'id:wt-1'], '/tmp')
 
-    expect(process.exitCode).toBe(1)
-    expect(console.error).toHaveBeenCalledWith(
-      expect.stringContaining('Path is outside the selected worktree (/tmp/repo).')
-    )
-    expect(console.error).toHaveBeenCalledWith(
-      expect.stringContaining('only opens files inside a worktree')
-    )
-    expect(callMock).toHaveBeenCalledTimes(1)
-    expect(callMock).toHaveBeenCalledWith('worktree.show', { worktree: 'id:wt-1' })
-  })
+      expect(process.exitCode).toBe(1)
+      expect(console.error).toHaveBeenCalledWith(
+        expect.stringContaining('Path is outside the selected worktree (/tmp/repo).')
+      )
+      expect(console.error).toHaveBeenCalledWith(
+        expect.stringContaining('This command only supports files inside a worktree')
+      )
+      expect(callMock).toHaveBeenCalledTimes(1)
+      expect(callMock).toHaveBeenCalledWith('worktree.show', { worktree: 'id:wt-1' })
+    }
+  )
 
   it.each([
     ['Windows', 'C:\\repo', 'C:\\elsewhere\\App.tsx', 'C:\\users\\ada'],
