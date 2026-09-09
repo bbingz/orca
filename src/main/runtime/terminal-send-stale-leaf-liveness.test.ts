@@ -180,6 +180,35 @@ describe('sendTerminal absence gate for leaf-branch writes', () => {
     expect(write).toHaveBeenCalledWith(STALE_PTY_ID, 'ping')
   })
 
+  it.each(['expired', 'over-capacity'])(
+    'prunes %s verdicts before returning for a live PTY',
+    async (kind) => {
+      const probe = vi.fn(async () => false)
+      const { runtime, handle, write } = await makeRuntimeWithLeafHandle({
+        probePtyLiveness: probe,
+        hasPty: (ptyId) => ptyId === STALE_PTY_ID
+      })
+      const verdicts = Reflect.get(runtime, 'provenAbsentLeafPtyVerdicts') as Map<string, number>
+      const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(100_000)
+      verdicts.set(STALE_PTY_ID, 0)
+      const count = kind === 'expired' ? 1 : PROVEN_ABSENT_LEAF_PTY_MAX_ENTRIES + 1
+      for (let index = 0; index < count; index += 1) {
+        verdicts.set(`other-${index}`, kind === 'expired' ? 0 : 99_000 + index)
+      }
+      try {
+        await expect(runtime.sendTerminal(handle, { text: 'ping' })).resolves.toMatchObject({
+          accepted: true
+        })
+        expect(verdicts.has(STALE_PTY_ID)).toBe(false)
+        expect(verdicts.size).toBe(kind === 'expired' ? 0 : PROVEN_ABSENT_LEAF_PTY_MAX_ENTRIES)
+        expect(probe).not.toHaveBeenCalled()
+        expect(write).toHaveBeenCalledWith(STALE_PTY_ID, 'ping')
+      } finally {
+        nowSpy.mockRestore()
+      }
+    }
+  )
+
   it('reuses a proven-absent verdict across repeated sends instead of re-probing', async () => {
     const probe = vi.fn(async () => false)
     const { runtime, handle } = await makeRuntimeWithLeafHandle({ probePtyLiveness: probe })

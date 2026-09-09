@@ -25,6 +25,8 @@ export class OrcaRuntimeWithControllerKnowsPtyIsLive extends OrcaRuntimeWithReso
 
   /** True only on controller-proven absence; live, unknown, and probe errors all answer false. */
   protected isLeafPtyProvenAbsent(ptyId: string): Promise<boolean> {
+    // Why: expired entries only dropped on re-probe leave process-lifetime growth (#12660).
+    pruneProvenAbsentLeafPtyVerdicts(this.provenAbsentLeafPtyVerdicts)
     // Why hasPty and not ptysById: graph sync mirrors a connected record for
     // every leaf ptyId — including a prior process's — so runtime records can't
     // distinguish live from stale. The controller's exact-id hasPty is the
@@ -34,8 +36,6 @@ export class OrcaRuntimeWithControllerKnowsPtyIsLive extends OrcaRuntimeWithReso
       this.provenAbsentLeafPtyVerdicts.delete(ptyId)
       return Promise.resolve(false)
     }
-    // Why: expired entries only dropped on re-probe leave process-lifetime growth (#12660).
-    pruneProvenAbsentLeafPtyVerdicts(this.provenAbsentLeafPtyVerdicts)
     const verdictAt = this.provenAbsentLeafPtyVerdicts.get(ptyId)
     if (verdictAt !== undefined) {
       if (Date.now() - verdictAt < PROVEN_ABSENT_LEAF_PTY_TTL_MS) {
