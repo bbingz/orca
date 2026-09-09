@@ -273,9 +273,10 @@ describe('DaemonPtyAdapter (IPtyProvider)', () => {
           'createOrAttach',
           expect.objectContaining({ command: undefined })
         )
-        expect(request).toHaveBeenNthCalledWith(2, 'kill', {
+        expect(request).toHaveBeenNthCalledWith(2, 'killOwned', {
           sessionId: 'raced-out-legacy-session',
-          immediate: true
+          immediate: true,
+          expectedIncarnationId: 'legacy-replacement-incarnation'
         })
         expect(legacy.getActiveSessionIds()).toEqual([])
       } finally {
@@ -311,7 +312,8 @@ describe('DaemonPtyAdapter (IPtyProvider)', () => {
           })
         ).rejects.toBeInstanceOf(TerminalSessionOwnerUnverifiedError)
         expect(request.mock.calls.filter((call) => call[0] === 'createOrAttach')).toHaveLength(1)
-        expect(request.mock.calls.filter((call) => call[0] === 'kill')).toHaveLength(1)
+        expect(request.mock.calls.filter((call) => call[0] === 'killOwned')).toHaveLength(1)
+        expect(request.mock.calls.filter((call) => call[0] === 'kill')).toHaveLength(0)
         expect(errorSpy).toHaveBeenCalledWith(
           '[daemon] attach-only retire of accidental legacy spawn failed; orphan may remain',
           { protocolVersion: 30, killErrorClass: 'transport' }
@@ -432,7 +434,13 @@ describe('DaemonPtyAdapter (IPtyProvider)', () => {
           type === 'getSize'
             ? ({ size: { cols: 100, rows: 30 } } as never)
             : type === 'createOrAttach'
-              ? ({ isNew: true, pid: 77, shellState: 'unsupported', snapshot: null } as never)
+              ? ({
+                  isNew: true,
+                  pid: 77,
+                  shellState: 'unsupported',
+                  snapshot: null,
+                  incarnationId: 'owned-incarnation'
+                } as never)
               : ({} as never)
         )
       const current = new DaemonPtyAdapter({ socketPath, tokenPath })
@@ -445,9 +453,10 @@ describe('DaemonPtyAdapter (IPtyProvider)', () => {
           'createOrAttach',
           expect.objectContaining({ cols: 100, rows: 30, attachOnly: true })
         )
-        expect(requestSpy).toHaveBeenCalledWith('kill', {
+        expect(requestSpy).toHaveBeenCalledWith('killOwned', {
           sessionId: 'raced-current-session',
-          immediate: true
+          immediate: true,
+          expectedIncarnationId: 'owned-incarnation'
         })
         expect(current.getActiveSessionIds()).toEqual([])
       } finally {
@@ -467,7 +476,13 @@ describe('DaemonPtyAdapter (IPtyProvider)', () => {
           type === 'getSize'
             ? ({ size: { cols: 100, rows: 30 } } as never)
             : type === 'createOrAttach'
-              ? ({ isNew: true, pid: 77, shellState: 'unsupported', snapshot: null } as never)
+              ? ({
+                  isNew: true,
+                  pid: 77,
+                  shellState: 'unsupported',
+                  snapshot: null,
+                  incarnationId: 'owned-incarnation'
+                } as never)
               : ({} as never)
         )
       const legacy = new DaemonPtyAdapter({ socketPath, tokenPath, protocolVersion: 30 })
@@ -482,9 +497,10 @@ describe('DaemonPtyAdapter (IPtyProvider)', () => {
         )
         const createPayload = requestSpy.mock.calls.find(([type]) => type === 'createOrAttach')?.[1]
         expect(createPayload).not.toHaveProperty('attachOnly')
-        expect(requestSpy).toHaveBeenCalledWith('kill', {
+        expect(requestSpy).toHaveBeenCalledWith('killOwned', {
           sessionId: 'raced-legacy-session',
-          immediate: true
+          immediate: true,
+          expectedIncarnationId: 'owned-incarnation'
         })
       } finally {
         legacy.dispose()
@@ -504,7 +520,13 @@ describe('DaemonPtyAdapter (IPtyProvider)', () => {
             return { size: { cols: 100, rows: 30 } } as never
           }
           if (type === 'createOrAttach') {
-            return { isNew: true, pid: 77, shellState: 'unsupported', snapshot: null } as never
+            return {
+              isNew: true,
+              pid: 77,
+              shellState: 'unsupported',
+              snapshot: null,
+              incarnationId: 'owned-incarnation'
+            } as never
           }
           throw new Error('kill transport lost')
         })
@@ -515,7 +537,8 @@ describe('DaemonPtyAdapter (IPtyProvider)', () => {
           TerminalSessionOwnerUnverifiedError
         )
 
-        expect(requestSpy.mock.calls.filter((call) => call[0] === 'kill')).toHaveLength(1)
+        expect(requestSpy.mock.calls.filter((call) => call[0] === 'killOwned')).toHaveLength(1)
+        expect(requestSpy.mock.calls.filter((call) => call[0] === 'kill')).toHaveLength(0)
         expect(errorSpy).toHaveBeenCalledWith(
           '[daemon] attach-only retire of accidental legacy spawn failed; orphan may remain',
           { protocolVersion: 30, killErrorClass: 'unknown' }
