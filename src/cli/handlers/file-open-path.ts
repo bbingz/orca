@@ -104,7 +104,7 @@ export async function resolveFilePath(
     throw new RuntimeClientError(
       'invalid_argument',
       `Path is outside the selected worktree (${worktreePath}). ` +
-        '`orca file open` only opens files inside a worktree; pass a path under that root or choose a different --worktree.'
+        'This command only supports files inside a worktree; pass a path under that root or choose a different --worktree.'
     )
   }
   return path
