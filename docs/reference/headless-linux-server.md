@@ -255,8 +255,9 @@ other remote; open projects and terminals against it as usual.
 
 If pairing fails with a connection error, re-check that `--pairing-address` is
 reachable from the client (Tailscale IP vs LAN IP vs reverse-proxy URL) and that
-firewalls allow the **actual bound port** from the ready block, not only the
-port you intended.
+direct connections allow the **actual bound port** from the ready block.
+For a reverse proxy, allow the **advertised proxy port** at the edge and the
+bound port only between the proxy and the service.
 
 ## Systemd Service
 
