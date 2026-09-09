@@ -55,6 +55,9 @@ describe('openExternalAppUrlWithUserApproval', () => {
 
   it('denies dangerous schemes', async () => {
     await expect(openExternalAppUrlWithUserApproval('javascript:alert(1)')).resolves.toBe('denied')
+    await expect(
+      openExternalAppUrlWithUserApproval('devtools://devtools/bundled/inspector.html')
+    ).resolves.toBe('denied')
     expect(showMessageBoxMock).not.toHaveBeenCalled()
     expect(openExternalMock).not.toHaveBeenCalled()
   })

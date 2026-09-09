@@ -67,6 +67,7 @@ describe('classifyExternalAppUrl', () => {
       'blob:https://example.com/uuid',
       'chrome://settings',
       'chrome-extension://id/page',
+      'devtools://devtools/bundled/inspector.html',
       'ms-appx://app/page',
       'ms-appx-web://app/page',
       'search:query=test',
@@ -107,7 +108,7 @@ describe('TERMINAL_WEB_AND_APP_URL_REGEX', () => {
 
   it('does not linkify denied schemes', () => {
     const text =
-      'file:///etc/passwd javascript:alert(1) vbscript://msgbox chrome://settings data:text/html,hi smb://host/share jnlp://x/app.jnlp'
+      'file:///etc/passwd javascript:alert(1) vbscript://msgbox chrome://settings devtools://devtools/bundled/inspector.html data:text/html,hi smb://host/share jnlp://x/app.jnlp'
     const matches = text.match(new RegExp(TERMINAL_WEB_AND_APP_URL_REGEX.source, 'g'))
     expect(matches).toBeNull()
   })

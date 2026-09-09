@@ -14,6 +14,7 @@ const DENIED_PROTOCOLS = new Set([
   'blob:',
   'chrome:',
   'chrome-extension:',
+  'devtools:',
   'ms-appx:',
   'ms-appx-web:',
   'smb:',
@@ -43,7 +44,7 @@ export type ExternalAppUrlClassification =
 // (file → ile://); negative lookahead skips denied schemes so they are not
 // underlined as dead links (#13225).
 export const TERMINAL_WEB_AND_APP_URL_REGEX =
-  /(?<![a-zA-Z0-9+.-])(?:https?|HTTPS?|(?!(?:javascript|data|vbscript|file|about|blob|chrome-extension|chrome|ms-appx-web|ms-appx|smb|jnlp|ms-msdt|search-ms|search|shell|hcp|ms-appinstaller|ms-its|ms-help|ms-cxh-full|ms-cxh|jar|view-source)(?![a-zA-Z0-9+.-]))[a-z][a-z0-9+.-]{1,31}):[/]{2}[^\s"'!*(){}|\\^<>`]*[^\s"':,.!?{}|\\^~[\]`()<>]/
+  /(?<![a-zA-Z0-9+.-])(?:https?|HTTPS?|(?!(?:javascript|data|vbscript|file|about|blob|chrome-extension|chrome|devtools|ms-appx-web|ms-appx|smb|jnlp|ms-msdt|search-ms|search|shell|hcp|ms-appinstaller|ms-its|ms-help|ms-cxh-full|ms-cxh|jar|view-source)(?![a-zA-Z0-9+.-]))[a-z][a-z0-9+.-]{1,31}):[/]{2}[^\s"'!*(){}|\\^<>`]*[^\s"':,.!?{}|\\^~[\]`()<>]/
 
 export function classifyExternalAppUrl(rawUrl: string): ExternalAppUrlClassification {
   const trimmed = rawUrl.trim()
