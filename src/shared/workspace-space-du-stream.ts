@@ -136,6 +136,10 @@ export function readWorkspaceSpaceDuDepthOne(
         return
       }
       try {
+        if (options.isCancelled?.()) {
+          onAbort?.()
+          return
+        }
         bufferedLine = consumeDuOutputChunk(
           sizes,
           budget,
