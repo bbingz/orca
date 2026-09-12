@@ -122,7 +122,10 @@ function startInstalledAgentSkillDiscovery(
 ): Promise<SkillDiscoveryResult> {
   const generation = discoveryGeneration
   const normalizedTarget = normalizeSkillDiscoveryTarget(target)
-  const discovery = discoverSkillsForRuntimeTarget(runtimeTarget, normalizedTarget)
+  // Why: a forced caller knows disk changed (install finished, explicit recheck),
+  // so it must also bypass the host's shared scans — not just this window's cache.
+  const requestTarget = force ? { ...normalizedTarget, refresh: true } : normalizedTarget
+  const discovery = discoverSkillsForRuntimeTarget(runtimeTarget, requestTarget)
     .then((result) => {
       if (generation === discoveryGeneration && !invalidatedPendingDiscoveries.has(discovery)) {
         writeInstalledAgentSkillDiscoveryCache(key, result)
