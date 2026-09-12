@@ -21,8 +21,10 @@ globalThis.window = { api: {} }
 
 import {
   discoverInstalledAgentSkills,
+  getCachedSkillDiscovery,
   resetSkillDiscoveryCacheForTests
 } from '@/hooks/installed-agent-skill-discovery'
+import { getInstalledAgentSkillDiscoveryCacheSizeForTests } from '@/hooks/installed-agent-skill-discovery-cache'
 import { createTestStore } from './store-test-helpers'
 
 function environment(id: string, pairingRevision = 1): PublicKnownRuntimeEnvironment {
@@ -54,6 +56,67 @@ afterEach(() => {
 })
 
 describe('runtime environment skill-cache eviction', () => {
+  it('releases retired runtime entries while preserving local and WSL cached scans', async () => {
+    const store = createTestStore()
+    discoverSkillsForRuntimeTarget.mockResolvedValue(result(1))
+    await discoverInstalledAgentSkills(false)
+    await discoverInstalledAgentSkills(false, { runtime: 'wsl', wslDistro: 'Ubuntu' })
+    for (let index = 0; index < 512; index++) {
+      const id = `temporary-${index}`
+      store.getState().setRuntimeEnvironments([environment(id)])
+      await discoverInstalledAgentSkills(false, undefined, remote(id))
+      store.getState().setRuntimeEnvironments([])
+    }
+
+    expect(getInstalledAgentSkillDiscoveryCacheSizeForTests()).toBe(2)
+    expect(getCachedSkillDiscovery('host')).toEqual(result(1))
+    expect(getCachedSkillDiscovery('wsl:Ubuntu')).toEqual(result(1))
+    expect(discoverSkillsForRuntimeTarget).toHaveBeenCalledTimes(514)
+  })
+
+  it('keeps a surviving runtime scan in flight when another runtime is removed', async () => {
+    const store = createTestStore()
+    const survivor = deferred()
+    store.getState().setRuntimeEnvironments([environment('a'), environment('b')])
+    discoverSkillsForRuntimeTarget.mockReturnValue(survivor.promise)
+    const first = discoverInstalledAgentSkills(false, undefined, remote('b'))
+
+    store.getState().setRuntimeEnvironments([environment('b')])
+    const joined = discoverInstalledAgentSkills(false, undefined, remote('b'))
+    expect(discoverSkillsForRuntimeTarget).toHaveBeenCalledOnce()
+    survivor.resolve(result(2))
+
+    await expect(Promise.all([first, joined])).resolves.toEqual([result(2), result(2)])
+  })
+
+  it.each(['before', 'after'] as const)(
+    'a retired scan finishing %s its replacement cannot overwrite it or detach its pending slot',
+    async (order) => {
+      const store = createTestStore()
+      const stale = deferred()
+      const current = deferred()
+      store.getState().setRuntimeEnvironments([environment('a')])
+      discoverSkillsForRuntimeTarget
+        .mockReturnValueOnce(stale.promise)
+        .mockReturnValueOnce(current.promise)
+      const oldRequest = discoverInstalledAgentSkills(false, undefined, remote('a'))
+      store.getState().setRuntimeEnvironments([environment('a', 2)])
+      const newRequest = discoverInstalledAgentSkills(true, undefined, remote('a'))
+      if (order === 'after') {
+        current.resolve(result(2))
+        await newRequest
+      }
+      stale.resolve(result(1))
+      await oldRequest
+      const joined = discoverInstalledAgentSkills(false, undefined, remote('a'))
+      expect(discoverSkillsForRuntimeTarget).toHaveBeenCalledTimes(2)
+      current.resolve(result(2))
+
+      await expect(Promise.all([newRequest, joined])).resolves.toEqual([result(2), result(2)])
+      expect(getCachedSkillDiscovery('runtime:a')).toEqual(result(2))
+    }
+  )
+
   it('rescans only the removed runtime environment', async () => {
     const store = createTestStore()
     store.getState().setRuntimeEnvironments([environment('env-a'), environment('env-b')])

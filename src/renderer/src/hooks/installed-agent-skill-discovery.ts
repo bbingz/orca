@@ -16,7 +16,6 @@ export const LOCAL_RUNTIME_TARGET: RuntimeClientTarget = { kind: 'local' }
 let discoveryGeneration = 0
 let pendingDiscoveryByTarget = new Map<string, Promise<SkillDiscoveryResult>>()
 let pendingDiscoverySatisfiesForcedRefreshByTarget = new Map<string, boolean>()
-let invalidatedPendingDiscoveries = new WeakSet<Promise<SkillDiscoveryResult>>()
 
 /** Last completed scan for a runtime-scoped key, for a synchronous first render. */
 export function getCachedSkillDiscovery(key: string): SkillDiscoveryResult | null {
@@ -46,12 +45,8 @@ export function evictInstalledAgentSkillDiscoveryForRuntimeEnvironments(
   for (const environmentId of environmentIds) {
     const key = getRuntimeScopedSkillDiscoveryKey({ kind: 'environment', environmentId }, undefined)
     deleteInstalledAgentSkillDiscoveryCache(key)
-    const pendingDiscovery = pendingDiscoveryByTarget.get(key)
-    if (pendingDiscovery) {
-      invalidatedPendingDiscoveries.add(pendingDiscovery)
-      pendingDiscoveryByTarget.delete(key)
-      pendingDiscoverySatisfiesForcedRefreshByTarget.delete(key)
-    }
+    pendingDiscoveryByTarget.delete(key)
+    pendingDiscoverySatisfiesForcedRefreshByTarget.delete(key)
   }
 }
 
@@ -60,7 +55,6 @@ export function resetSkillDiscoveryCacheForTests(): void {
   resetInstalledAgentSkillDiscoveryCacheForTests()
   pendingDiscoveryByTarget = new Map()
   pendingDiscoverySatisfiesForcedRefreshByTarget = new Map()
-  invalidatedPendingDiscoveries = new WeakSet()
 }
 
 function normalizeSkillDiscoveryTarget(
@@ -127,7 +121,7 @@ function startInstalledAgentSkillDiscovery(
   const requestTarget = force ? { ...normalizedTarget, refresh: true } : normalizedTarget
   const discovery = discoverSkillsForRuntimeTarget(runtimeTarget, requestTarget)
     .then((result) => {
-      if (generation === discoveryGeneration && !invalidatedPendingDiscoveries.has(discovery)) {
+      if (generation === discoveryGeneration && pendingDiscoveryByTarget.get(key) === discovery) {
         writeInstalledAgentSkillDiscoveryCache(key, result)
       }
       return result
