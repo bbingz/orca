@@ -9,7 +9,6 @@ import { listOpenCodeSqliteSessions } from './session-scanner-opencode-sqlite-li
 import {
   openCodeBusyTimeoutMs,
   openCodeDatabaseScanIssue,
-  openOpenCodeDatabaseReadonly,
   readOpenCodeDatabase
 } from './session-scanner-opencode-sqlite-open'
 
@@ -160,13 +159,27 @@ describe('readOpenCodeDatabase', () => {
   it('closes the handle when query_only setup fails', () => {
     const path = seededDatabase('opencode.db', 'session-a')
     const setupError = new Error('query_only setup failed')
-    vi.spyOn(Database.prototype, 'pragma').mockImplementationOnce(() => {
+    const originalClose = Database.prototype.close
+    const pragmaSpy = vi.spyOn(Database.prototype, 'pragma').mockImplementationOnce(() => {
       throw setupError
     })
     const closeSpy = vi.spyOn(Database.prototype, 'close')
+    const read = vi.fn()
 
-    expect(() => openOpenCodeDatabaseReadonly(path)).toThrow(setupError)
-    expect(closeSpy).toHaveBeenCalledOnce()
+    try {
+      expect(() => readOpenCodeDatabase({ dbPath: path, read })).toThrow(setupError)
+      expect(read).not.toHaveBeenCalled()
+      expect(closeSpy).toHaveBeenCalledOnce()
+      expect(() => (pragmaSpy.mock.contexts[0] as Database).prepare('SELECT 1')).toThrow(
+        /not open/i
+      )
+    } finally {
+      try {
+        originalClose.call(pragmaSpy.mock.contexts[0] as Database)
+      } catch {
+        // Keep the regression safe to run against the leaking implementation too.
+      }
+    }
   })
 
   it('preserves the setup error when closing also fails', () => {
@@ -182,7 +195,22 @@ describe('readOpenCodeDatabase', () => {
       throw closeError
     })
 
-    expect(() => openOpenCodeDatabaseReadonly(path)).toThrow(setupError)
+    const read = vi.fn()
+    expect(() => readOpenCodeDatabase({ dbPath: path, read })).toThrow(setupError)
+    expect(Database.prototype.close).toHaveBeenCalledOnce()
+    expect(read).not.toHaveBeenCalled()
+  })
+
+  it('keeps the query-only guard enabled for successful reads', () => {
+    const path = seededDatabase('opencode.db', 'session-a')
+    readOpenCodeDatabase({
+      dbPath: path,
+      read: (db) => {
+        expect(db.pragma('query_only', { simple: true })).toBe(1)
+        expect(() => db.exec('DELETE FROM session')).toThrow(/readonly/i)
+        expect(db.prepare('SELECT id FROM session').all()).toEqual([{ id: 'session-a' }])
+      }
+    })
   })
 
   it('closes the handle when the read throws', () => {
