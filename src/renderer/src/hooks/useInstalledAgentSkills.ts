@@ -165,7 +165,9 @@ export function useInstalledAgentSkillNames(
   const [error, setError] = useState<string | null>(null)
   const currentDiscoveryTargetKeyRef = useRef(discoveryTargetKey)
   const refreshGenerationRef = useRef(0)
-  const stateResetInputRef = useRef({ discoveryTargetKey, enabled })
+  // Why: the runtime target only changes identity when the owning peer does
+  // (switch or same-id re-pair), so it resets state alongside the key.
+  const stateResetInputRef = useRef({ discoveryTargetKey, enabled, runtimeTarget })
   currentDiscoveryTargetKeyRef.current = discoveryTargetKey
   // Why: skill scans can outlive transient settings/onboarding panels; keep
   // the module cache update but skip React state writes after unmount.
@@ -175,11 +177,12 @@ export function useInstalledAgentSkillNames(
   let errorForRender = error
   if (
     stateResetInputRef.current.discoveryTargetKey !== discoveryTargetKey ||
-    stateResetInputRef.current.enabled !== enabled
+    stateResetInputRef.current.enabled !== enabled ||
+    stateResetInputRef.current.runtimeTarget !== runtimeTarget
   ) {
     const nextCachedDiscovery = getCachedSkillDiscovery(discoveryTargetKey)
     const nextLoading = enabled && !nextCachedDiscovery
-    stateResetInputRef.current = { discoveryTargetKey, enabled }
+    stateResetInputRef.current = { discoveryTargetKey, enabled, runtimeTarget }
     resultForRender = nextCachedDiscovery
     loadingForRender = nextLoading
     errorForRender = null

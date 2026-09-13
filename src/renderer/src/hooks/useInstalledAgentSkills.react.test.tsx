@@ -697,6 +697,96 @@ describe('useInstalledAgentSkill', () => {
     expect(renderedStates[0]?.installed).toBe(true)
   })
 
+  // Why: a same-id re-pair keeps the environment id, so nothing else the hook
+  // keys on moves. The store evicts the module cache, but a mounted consumer
+  // must also drop the retired peer's list and scan the new one.
+  it('rescans a mounted consumer when the focused runtime re-pairs under the same id', async () => {
+    const discover = vi.fn<(target?: SkillDiscoveryTarget) => Promise<SkillDiscoveryResult>>()
+    let remoteSkills = [skill({ name: 'linear-tickets' })]
+    const call = vi.fn(
+      async (args: { method: string; selector?: string }) =>
+        createCompatibleRuntimeStatusResponseIfNeeded(args) ?? {
+          id: 'skills',
+          ok: true,
+          result: discoveryResult(remoteSkills)
+        }
+    )
+    Object.defineProperty(window, 'api', {
+      configurable: true,
+      value: { skills: { discover }, runtimeEnvironments: { call } }
+    })
+    useAppStore.setState({ settings: { activeRuntimeEnvironmentId: 'env-1' } as GlobalSettings })
+    useAppStore.getState().setRuntimeEnvironments([{ id: 'env-1', createdAt: 1 }] as never)
+
+    await renderProbe()
+    await flushMicrotasks()
+    expect(latestState?.installed).toBe(true)
+    const scansBeforeRepair = call.mock.calls.filter(
+      (entry) => entry[0].method === 'skills.discover'
+    ).length
+    expect(scansBeforeRepair).toBe(1)
+
+    remoteSkills = []
+    await act(async () => {
+      useAppStore
+        .getState()
+        .setRuntimeEnvironments([{ id: 'env-1', createdAt: 1, pairingRevision: 2 }] as never)
+    })
+    await flushMicrotasks()
+
+    expect(call.mock.calls.filter((entry) => entry[0].method === 'skills.discover')).toHaveLength(2)
+    expect(latestState?.installed).toBe(false)
+    expect(discover).not.toHaveBeenCalled()
+  })
+
+  it('drops an in-flight scan from the retired peer when its runtime re-pairs', async () => {
+    const discover = vi.fn<(target?: SkillDiscoveryTarget) => Promise<SkillDiscoveryResult>>()
+    const staleScan = deferred<SkillDiscoveryResult>()
+    const freshScan = deferred<SkillDiscoveryResult>()
+    const scans = [staleScan, freshScan]
+    const call = vi.fn(async (args: { method: string; selector?: string }) => {
+      const status = createCompatibleRuntimeStatusResponseIfNeeded(args)
+      if (status) {
+        return status
+      }
+      const scan = scans.shift()
+      if (!scan) {
+        throw new Error('unexpected extra skills.discover call')
+      }
+      return { id: 'skills', ok: true, result: await scan.promise }
+    })
+    Object.defineProperty(window, 'api', {
+      configurable: true,
+      value: { skills: { discover }, runtimeEnvironments: { call } }
+    })
+    useAppStore.setState({ settings: { activeRuntimeEnvironmentId: 'env-1' } as GlobalSettings })
+    useAppStore.getState().setRuntimeEnvironments([{ id: 'env-1', createdAt: 1 }] as never)
+
+    await renderProbe()
+    await flushMicrotasks()
+    expect(latestState?.loading).toBe(true)
+
+    await act(async () => {
+      useAppStore
+        .getState()
+        .setRuntimeEnvironments([{ id: 'env-1', createdAt: 1, pairingRevision: 2 }] as never)
+    })
+    await flushMicrotasks()
+    staleScan.resolve(discoveryResult([skill({ name: 'linear-tickets' })]))
+    await flushMicrotasks()
+
+    expect(latestState?.installed).toBe(false)
+    expect(latestState?.loading).toBe(true)
+
+    freshScan.resolve(discoveryResult([]))
+    await flushMicrotasks()
+
+    expect(scans).toHaveLength(0)
+    expect(latestState?.installed).toBe(false)
+    expect(latestState?.loading).toBe(false)
+    expect(renderedStates.some((state) => state.installed)).toBe(false)
+  })
+
   it('empties the discovery cache when an install notification fires', async () => {
     // Why: assert the cache directly — a mounted component forces a rescan and
     // would hide a missing invalidation.
