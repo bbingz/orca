@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 
-import { act } from 'react'
+import { act, Suspense } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type {
@@ -11,6 +11,7 @@ import type {
 } from '../../../shared/skills'
 import type { ProjectExecutionRuntimeResolution } from '../../../shared/project-execution-runtime'
 import type { GlobalSettings } from '../../../shared/global-settings-types'
+import type { PublicKnownRuntimeEnvironment } from '../../../shared/runtime-environments'
 import { createCompatibleRuntimeStatusResponseIfNeeded } from '@/runtime/runtime-compatibility-test-fixture'
 import { clearRuntimeCompatibilityCacheForTests } from '@/runtime/runtime-rpc-client'
 import { useAppStore } from '@/store'
@@ -28,6 +29,8 @@ let root: Root | null = null
 let container: HTMLDivElement | null = null
 let latestState: InstalledAgentSkillState | null = null
 const renderedStates: InstalledAgentSkillState[] = []
+/** When set, the next Probe render suspends on it, so React throws that render away. */
+let suspendNextProbeRender: Promise<void> | null = null
 
 function skill(overrides: Partial<DiscoveredSkill>): DiscoveredSkill {
   return {
@@ -100,23 +103,60 @@ const projectWslRuntime: ProjectExecutionRuntimeResolution = {
   }
 }
 
+function runtimeEnvironment(
+  overrides: Partial<PublicKnownRuntimeEnvironment> = {}
+): PublicKnownRuntimeEnvironment {
+  return {
+    id: 'env-1',
+    name: 'Remote Mac',
+    createdAt: 1,
+    updatedAt: 1,
+    lastUsedAt: null,
+    runtimeId: null,
+    endpoints: [{ id: 'ws-env-1', kind: 'websocket', label: 'Remote', endpoint: 'wss://env-1' }],
+    preferredEndpointId: 'ws-env-1',
+    ...overrides
+  }
+}
+
 function Probe({ discoveryTarget }: { discoveryTarget?: SkillDiscoveryTarget }): null {
   latestState = useInstalledAgentSkillNames(LINEAR_AGENT_SKILL_NAMES, {
     discoveryTarget,
     sourceKinds: GLOBAL_AGENT_SKILL_SOURCE_KINDS
   })
+  if (suspendNextProbeRender) {
+    const pending = suspendNextProbeRender
+    suspendNextProbeRender = null
+    throw pending
+  }
   renderedStates.push(latestState)
   return null
 }
 
-async function renderProbe(discoveryTarget?: SkillDiscoveryTarget): Promise<void> {
+function ensureRoot(): Root {
   if (!container) {
     container = document.createElement('div')
     document.body.appendChild(container)
     root = createRoot(container)
   }
+  return root!
+}
+
+async function renderProbe(discoveryTarget?: SkillDiscoveryTarget): Promise<void> {
+  const probeRoot = ensureRoot()
   await act(async () => {
-    root?.render(<Probe discoveryTarget={discoveryTarget} />)
+    probeRoot.render(<Probe discoveryTarget={discoveryTarget} />)
+  })
+}
+
+async function renderProbeUnderSuspense(discoveryTarget?: SkillDiscoveryTarget): Promise<void> {
+  const probeRoot = ensureRoot()
+  await act(async () => {
+    probeRoot.render(
+      <Suspense fallback={null}>
+        <Probe discoveryTarget={discoveryTarget} />
+      </Suspense>
+    )
   })
 }
 
@@ -131,6 +171,7 @@ afterEach(async () => {
   container = null
   latestState = null
   renderedStates.length = 0
+  suspendNextProbeRender = null
   _installedAgentSkillDiscoveryInternalsForTests.reset()
   clearRuntimeCompatibilityCacheForTests()
   useAppStore.setState({
@@ -715,8 +756,8 @@ describe('useInstalledAgentSkill', () => {
       configurable: true,
       value: { skills: { discover }, runtimeEnvironments: { call } }
     })
-    useAppStore.setState({ settings: { activeRuntimeEnvironmentId: 'env-1' } as GlobalSettings })
-    useAppStore.getState().setRuntimeEnvironments([{ id: 'env-1', createdAt: 1 }] as never)
+    setRuntimeOwner('env-1')
+    useAppStore.getState().setRuntimeEnvironments([runtimeEnvironment()])
 
     await renderProbe()
     await flushMicrotasks()
@@ -728,9 +769,7 @@ describe('useInstalledAgentSkill', () => {
 
     remoteSkills = []
     await act(async () => {
-      useAppStore
-        .getState()
-        .setRuntimeEnvironments([{ id: 'env-1', createdAt: 1, pairingRevision: 2 }] as never)
+      useAppStore.getState().setRuntimeEnvironments([runtimeEnvironment({ pairingRevision: 2 })])
     })
     await flushMicrotasks()
 
@@ -759,17 +798,15 @@ describe('useInstalledAgentSkill', () => {
       configurable: true,
       value: { skills: { discover }, runtimeEnvironments: { call } }
     })
-    useAppStore.setState({ settings: { activeRuntimeEnvironmentId: 'env-1' } as GlobalSettings })
-    useAppStore.getState().setRuntimeEnvironments([{ id: 'env-1', createdAt: 1 }] as never)
+    setRuntimeOwner('env-1')
+    useAppStore.getState().setRuntimeEnvironments([runtimeEnvironment()])
 
     await renderProbe()
     await flushMicrotasks()
     expect(latestState?.loading).toBe(true)
 
     await act(async () => {
-      useAppStore
-        .getState()
-        .setRuntimeEnvironments([{ id: 'env-1', createdAt: 1, pairingRevision: 2 }] as never)
+      useAppStore.getState().setRuntimeEnvironments([runtimeEnvironment({ pairingRevision: 2 })])
     })
     await flushMicrotasks()
     staleScan.resolve(discoveryResult([skill({ name: 'linear-tickets' })]))
@@ -785,6 +822,39 @@ describe('useInstalledAgentSkill', () => {
     expect(latestState?.installed).toBe(false)
     expect(latestState?.loading).toBe(false)
     expect(renderedStates.some((state) => state.installed)).toBe(false)
+  })
+
+  // Why: the reset once lived in a ref written during render. React drops the
+  // state updates of a render it throws away but not the ref write, so the retry
+  // saw "already reset" and kept painting the old target's list until a rescan.
+  it('still drops the old target list when React discards the render that saw the switch', async () => {
+    const discover = vi
+      .fn<(target?: SkillDiscoveryTarget) => Promise<SkillDiscoveryResult>>()
+      .mockResolvedValueOnce(discoveryResult([skill({ name: 'linear-tickets' })]))
+      .mockResolvedValue(discoveryResult([]))
+    Object.defineProperty(window, 'api', {
+      configurable: true,
+      value: { skills: { discover } }
+    })
+
+    await renderProbeUnderSuspense()
+    await flushMicrotasks()
+    expect(latestState?.installed).toBe(true)
+
+    const discardedRender = deferred<void>()
+    suspendNextProbeRender = discardedRender.promise
+    renderedStates.length = 0
+    await renderProbeUnderSuspense({ runtime: 'wsl', wslDistro: 'Fedora' })
+    expect(suspendNextProbeRender).toBeNull()
+    discardedRender.resolve()
+    await act(async () => {
+      await discardedRender.promise
+    })
+
+    expect(renderedStates.some((state) => state.installed)).toBe(false)
+    await flushMicrotasks()
+    expect(discover).toHaveBeenCalledTimes(2)
+    expect(latestState?.installed).toBe(false)
   })
 
   it('empties the discovery cache when an install notification fires', async () => {

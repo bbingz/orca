@@ -28,7 +28,17 @@ import { getInstalledAgentSkillDiscoveryCacheSizeForTests } from '@/hooks/instal
 import { createTestStore } from './store-test-helpers'
 
 function environment(id: string, pairingRevision = 1): PublicKnownRuntimeEnvironment {
-  return { id, createdAt: 1, pairingRevision } as PublicKnownRuntimeEnvironment
+  return {
+    id,
+    name: id,
+    createdAt: 1,
+    updatedAt: 1,
+    pairingRevision,
+    lastUsedAt: null,
+    runtimeId: null,
+    endpoints: [{ id: `ws-${id}`, kind: 'websocket', label: id, endpoint: `wss://${id}` }],
+    preferredEndpointId: `ws-${id}`
+  }
 }
 
 function remote(environmentId: string): RuntimeClientTarget {
