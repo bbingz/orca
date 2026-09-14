@@ -193,24 +193,7 @@ export async function getProjectRef(
   connectionId?: string | null,
   localGitOptions: LocalGitExecOptions = {}
 ): Promise<ProjectRef | null> {
-  const origin = await getProjectRefForRemote(
-    repoPath,
-    'origin',
-    knownHosts,
-    connectionId,
-    localGitOptions
-  )
-  if (origin) {
-    return origin
-  }
-  return getProjectRefPreferring(
-    repoPath,
-    [],
-    knownHosts,
-    connectionId,
-    localGitOptions,
-    ['origin']
-  )
+  return getProjectRefForRemote(repoPath, 'origin', knownHosts, connectionId, localGitOptions)
 }
 
 export async function getIssueProjectRef(

@@ -128,15 +128,10 @@ describe('gitlab project ref resolution', () => {
   it('resolves a sole non-origin GitLab remote after origin/upstream miss (#13816)', async () => {
     mockGitRemoteCommands({ myremote: 'ssh://git@gitlab.example.com:2222/group/project.git' })
 
-    await expect(getProjectRef('/repo', ['gitlab.example.com'])).resolves.toEqual({
-      host: 'gitlab.example.com',
-      path: 'group/project'
-    })
     await expect(getIssueProjectRef('/repo', ['gitlab.example.com'])).resolves.toEqual({
       host: 'gitlab.example.com',
       path: 'group/project'
     })
-    expect(gitRemoteGetUrlCalls('origin').length).toBeGreaterThan(0)
     expect(gitRemoteGetUrlCalls('myremote').length).toBeGreaterThan(0)
   })
 
