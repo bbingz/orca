@@ -212,7 +212,14 @@ export class OrcaRuntimeWithStopRequestedPtyIds extends OrcaRuntimeWithRuntimeId
       undefined,
     getLeafKey: (tabId, leafId) => this.getLeafKey(tabId, leafId),
     getLiveLeafForHandle: (handle) => this.getLiveLeafForHandle(handle).leaf,
-    isAgentSettledForDelivery: (leaf) => this.checkDeliverySettledAndArmRecheck(leaf),
+    isAgentSettledForDelivery: (leaf) => {
+      if (this.leaves.has(this.getLeafKey(leaf.tabId, leaf.leafId))) {
+        return this.checkDeliverySettledAndArmRecheck(leaf)
+      }
+      // Why: background CLI PTYs never mint a renderer leaf, so the TUI-idle
+      // gate has nothing to read. deliverForHandle already required idle.
+      return leaf.lastAgentStatus === 'idle' && leaf.lastAgentStatusObservedLive === true
+    },
     getLiveBackgroundPtyLeafForHandle: (handle) => {
       const live = this.getLivePtyForHandle(handle)
       return live ? mailboxLeafFromBackgroundPty(live.pty) : null
