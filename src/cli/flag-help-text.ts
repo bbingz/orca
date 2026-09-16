@@ -54,7 +54,7 @@ export const FLAG_HELP_TEXT: Record<string, string> = {
   session: '--session <id>        Snapshot namespace for a related computer-use workflow',
   setup: '--setup run|skip|inherit Setup policy for repo-defined setup hooks',
   shell: '--shell <shell>        Windows shell the terminal itself runs as',
-  terminal: '--terminal <selector> Runtime handle or stable pty:<ptyId>',
+  terminal: '--terminal <handle>  Runtime-issued terminal handle',
   text: '--text <text>          Text payload to send or type',
   'text-stdin': '--text-stdin          Read text payload from stdin',
   'task-id': '--task-id <id>        Task id to include in orchestration payload JSON',
