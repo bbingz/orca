@@ -49,11 +49,18 @@ export function resolveLifecycleRejectionBounceTo(
   message: MessageRow
 ): string {
   try {
-    const parsed = message.payload
-      ? (JSON.parse(message.payload) as { dispatchId?: unknown })
-      : null
-    const dispatchId =
-      parsed && typeof parsed.dispatchId === 'string' ? parsed.dispatchId.trim() : ''
+    let dispatchId = ''
+    if (message.payload) {
+      const parsed: unknown = JSON.parse(message.payload)
+      if (
+        parsed !== null &&
+        typeof parsed === 'object' &&
+        'dispatchId' in parsed &&
+        typeof parsed.dispatchId === 'string'
+      ) {
+        dispatchId = parsed.dispatchId.trim()
+      }
+    }
     if (dispatchId) {
       const mailbox = checkReadableDispatchMailbox(db.getDispatchContextById(dispatchId), message)
       if (mailbox) {
