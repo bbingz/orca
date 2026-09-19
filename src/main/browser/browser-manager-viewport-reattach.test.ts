@@ -12,7 +12,9 @@ const browserMocks = vi.hoisted(() => ({
   guestOpenDevToolsMock: vi.fn(),
   webContentsFromIdMock: vi.fn(),
   screenGetCursorScreenPointMock: vi.fn(() => ({ x: 0, y: 0 })),
-  openPopupWithOriginBarMock: vi.fn()
+  openPopupWithOriginBarMock: vi.fn(),
+  processUserAgentMode: 'clean',
+  processUserAgent: ''
 }))
 
 vi.mock('electron', () => ({
@@ -29,6 +31,13 @@ vi.mock('./popup-origin-bar-window', () => ({
   openPopupWithOriginBar: browserMocks.openPopupWithOriginBarMock
 }))
 
+vi.mock('./browser-process-user-agent', () => ({
+  getBrowserProcessUserAgentIdentity: () => ({
+    mode: browserMocks.processUserAgentMode,
+    userAgent: browserMocks.processUserAgent
+  })
+}))
+
 import { browserManager } from './browser-manager'
 import {
   rendererWebContentsId,
@@ -36,7 +45,9 @@ import {
   resetBrowserManagerState
 } from './browser-manager-test-harness'
 import {
+  attachMockGuest,
   createViewportGuestFactory,
+  extractEventListener,
   flushViewportOps
 } from './browser-manager-viewport-test-fixtures'
 
@@ -61,10 +72,10 @@ describe('browserManager viewport debugger reattachment', () => {
       debuggerIsAttached.mockReturnValue(true)
     })
     webContentsFromIdMock.mockReturnValue(guest)
-    browserManager.attachGuestPolicies(guest as never)
+    attachMockGuest(browserManager, guest)
     browserManager.registerGuest({
       browserPageId: 'tab-detach-restore',
-      webContentsId: guest.id as number,
+      webContentsId: guest.id,
       rendererWebContentsId
     })
     await browserManager.setViewportOverride('tab-detach-restore', {
@@ -77,9 +88,7 @@ describe('browserManager viewport debugger reattachment', () => {
     debuggerSendCommand.mockClear()
     debuggerAttach.mockClear()
     debuggerIsAttached.mockReturnValue(false)
-    const detachHandler = debuggerOn.mock.calls.find(([event]) => event === 'detach')?.[1] as
-      | (() => void)
-      | undefined
+    const detachHandler = extractEventListener(debuggerOn.mock.calls, 'detach')
     detachHandler?.()
     await flushViewportOps()
 
@@ -100,10 +109,10 @@ describe('browserManager viewport debugger reattachment', () => {
       debuggerIsAttached.mockReturnValue(true)
     })
     webContentsFromIdMock.mockReturnValue(guest)
-    browserManager.attachGuestPolicies(guest as never)
+    attachMockGuest(browserManager, guest)
     browserManager.registerGuest({
       browserPageId: 'tab-clear-during-reattach',
-      webContentsId: guest.id as number,
+      webContentsId: guest.id,
       rendererWebContentsId
     })
     await browserManager.setViewportOverride('tab-clear-during-reattach', {
@@ -121,9 +130,7 @@ describe('browserManager viewport debugger reattachment', () => {
     debuggerSendCommand.mockImplementation((command) =>
       command === 'Emulation.clearDeviceMetricsOverride' ? clearMetrics : Promise.resolve()
     )
-    const detachHandler = debuggerOn.mock.calls.find(([event]) => event === 'detach')?.[1] as
-      | (() => void)
-      | undefined
+    const detachHandler = extractEventListener(debuggerOn.mock.calls, 'detach')
     debuggerIsAttached.mockReturnValue(false)
     const clearPromise = browserManager.setViewportOverride('tab-clear-during-reattach', null)
     await flushViewportOps()
@@ -144,10 +151,10 @@ describe('browserManager viewport debugger reattachment', () => {
     const oldGuest = makeGuest(4252)
     const newGuest = makeGuest(4253)
     webContentsFromIdMock.mockReturnValue(oldGuest.guest)
-    browserManager.attachGuestPolicies(oldGuest.guest as never)
+    attachMockGuest(browserManager, oldGuest.guest)
     browserManager.registerGuest({
       browserPageId: 'tab-replaced-webview',
-      webContentsId: oldGuest.guest.id as number,
+      webContentsId: oldGuest.guest.id,
       rendererWebContentsId
     })
     await browserManager.setViewportOverride('tab-replaced-webview', {
@@ -158,11 +165,11 @@ describe('browserManager viewport debugger reattachment', () => {
     })
 
     webContentsFromIdMock.mockReturnValue(newGuest.guest)
-    browserManager.attachGuestPolicies(newGuest.guest as never)
+    attachMockGuest(browserManager, newGuest.guest)
     newGuest.debuggerSendCommand.mockClear()
     browserManager.registerGuest({
       browserPageId: 'tab-replaced-webview',
-      webContentsId: newGuest.guest.id as number,
+      webContentsId: newGuest.guest.id,
       rendererWebContentsId
     })
     await flushViewportOps()
@@ -181,12 +188,12 @@ describe('browserManager viewport debugger reattachment', () => {
   it('restores the standing viewport when an offscreen guest is replaced', async () => {
     const oldGuest = makeGuest(4254)
     const newGuest = makeGuest(4255)
-    ;(oldGuest.guest.getType as ReturnType<typeof vi.fn>).mockReturnValue('window')
-    ;(newGuest.guest.getType as ReturnType<typeof vi.fn>).mockReturnValue('window')
+    oldGuest.guest.getType.mockReturnValue('window')
+    newGuest.guest.getType.mockReturnValue('window')
     webContentsFromIdMock.mockReturnValue(oldGuest.guest)
     browserManager.registerOffscreenGuest({
       browserPageId: 'tab-replaced-offscreen',
-      webContentsId: oldGuest.guest.id as number
+      webContentsId: oldGuest.guest.id
     })
     await browserManager.setViewportOverride('tab-replaced-offscreen', {
       width: 1280,
@@ -199,7 +206,7 @@ describe('browserManager viewport debugger reattachment', () => {
     newGuest.debuggerSendCommand.mockClear()
     browserManager.registerOffscreenGuest({
       browserPageId: 'tab-replaced-offscreen',
-      webContentsId: newGuest.guest.id as number
+      webContentsId: newGuest.guest.id
     })
     await flushViewportOps()
 
@@ -218,21 +225,17 @@ describe('browserManager viewport debugger reattachment', () => {
     const { guest, debuggerAttach, debuggerIsAttached, debuggerOn, debuggerSendCommand } =
       makeGuest(4256)
     webContentsFromIdMock.mockReturnValue(guest)
-    browserManager.attachGuestPolicies(guest as never)
+    attachMockGuest(browserManager, guest)
     browserManager.registerGuest({
       browserPageId: 'tab-no-preset-detach',
-      webContentsId: guest.id as number,
+      webContentsId: guest.id,
       rendererWebContentsId
     })
     debuggerAttach.mockClear()
     debuggerSendCommand.mockClear()
     debuggerIsAttached.mockReturnValue(false)
-    const detachHandler = debuggerOn.mock.calls.find(([event]) => event === 'detach')?.[1] as
-      | (() => void)
-      | undefined
-    const closedHandler = guestOnMock.mock.calls.find(
-      ([event]) => event === 'devtools-closed'
-    )?.[1] as (() => void) | undefined
+    const detachHandler = extractEventListener(debuggerOn.mock.calls, 'detach')
+    const closedHandler = extractEventListener(guestOnMock.mock.calls, 'devtools-closed')
     detachHandler?.()
     closedHandler?.()
     await flushViewportOps()
@@ -255,10 +258,10 @@ describe('browserManager viewport debugger reattachment', () => {
       throw new Error('Another debugger is already attached')
     })
     webContentsFromIdMock.mockReturnValue(guest)
-    browserManager.attachGuestPolicies(guest as never)
+    attachMockGuest(browserManager, guest)
     browserManager.registerGuest({
       browserPageId: 'tab-devtools-restore',
-      webContentsId: guest.id as number,
+      webContentsId: guest.id,
       rendererWebContentsId
     })
     debuggerAttach.mockImplementation(() => {
@@ -278,12 +281,8 @@ describe('browserManager viewport debugger reattachment', () => {
     })
     debuggerIsAttached.mockReturnValue(false)
     isDevToolsOpened.mockReturnValue(true)
-    const detachHandler = debuggerOn.mock.calls.find(([event]) => event === 'detach')?.[1] as
-      | (() => void)
-      | undefined
-    const closedHandler = guestOnMock.mock.calls.find(
-      ([event]) => event === 'devtools-closed'
-    )?.[1] as (() => void) | undefined
+    const detachHandler = extractEventListener(debuggerOn.mock.calls, 'detach')
+    const closedHandler = extractEventListener(guestOnMock.mock.calls, 'devtools-closed')
     // Electron: debugger.detach fires when DevTools is invoked, not when it closes.
     detachHandler?.()
     await flushViewportOps()
@@ -312,10 +311,10 @@ describe('browserManager viewport debugger reattachment', () => {
     const oldGuest = makeGuest(4257)
     const newGuest = makeGuest(4258)
     webContentsFromIdMock.mockReturnValue(oldGuest.guest)
-    browserManager.attachGuestPolicies(oldGuest.guest as never)
+    attachMockGuest(browserManager, oldGuest.guest)
     browserManager.registerGuest({
       browserPageId: 'tab-replace-during-set',
-      webContentsId: oldGuest.guest.id as number,
+      webContentsId: oldGuest.guest.id,
       rendererWebContentsId
     })
 
@@ -340,11 +339,11 @@ describe('browserManager viewport debugger reattachment', () => {
     )
 
     webContentsFromIdMock.mockReturnValue(newGuest.guest)
-    browserManager.attachGuestPolicies(newGuest.guest as never)
+    attachMockGuest(browserManager, newGuest.guest)
     newGuest.debuggerSendCommand.mockClear()
     browserManager.registerGuest({
       browserPageId: 'tab-replace-during-set',
-      webContentsId: newGuest.guest.id as number,
+      webContentsId: newGuest.guest.id,
       rendererWebContentsId
     })
     releaseTouch()
@@ -369,10 +368,10 @@ describe('browserManager viewport debugger reattachment', () => {
   it('rejects the caller when a viewport op throws before CDP handling', async () => {
     const { guest } = makeGuest(4259)
     webContentsFromIdMock.mockReturnValue(guest)
-    browserManager.attachGuestPolicies(guest as never)
+    attachMockGuest(browserManager, guest)
     browserManager.registerGuest({
       browserPageId: 'tab-throw-before-cdp',
-      webContentsId: guest.id as number,
+      webContentsId: guest.id,
       rendererWebContentsId
     })
 

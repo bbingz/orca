@@ -7,7 +7,6 @@ import {
 import type { KeybindingOverrides } from '../../shared/keybindings'
 import type {
   BrowserLoadError,
-  BrowserSessionUserAgentMode,
   BrowserViewportOverride
 } from '../../shared/browser-workspace-types'
 import { resolveBrowserRouteGuestPopupOpener } from './browser-route-guest-popup-ownership'

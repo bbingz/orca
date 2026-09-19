@@ -12,7 +12,9 @@ const browserMocks = vi.hoisted(() => ({
   guestOpenDevToolsMock: vi.fn(),
   webContentsFromIdMock: vi.fn(),
   screenGetCursorScreenPointMock: vi.fn(() => ({ x: 0, y: 0 })),
-  openPopupWithOriginBarMock: vi.fn()
+  openPopupWithOriginBarMock: vi.fn(),
+  processUserAgentMode: 'clean',
+  processUserAgent: ''
 }))
 
 vi.mock('electron', () => ({
@@ -29,6 +31,13 @@ vi.mock('./popup-origin-bar-window', () => ({
   openPopupWithOriginBar: browserMocks.openPopupWithOriginBarMock
 }))
 
+vi.mock('./browser-process-user-agent', () => ({
+  getBrowserProcessUserAgentIdentity: () => ({
+    mode: browserMocks.processUserAgentMode,
+    userAgent: browserMocks.processUserAgent
+  })
+}))
+
 import { browserManager } from './browser-manager'
 import {
   rendererWebContentsId,
@@ -36,6 +45,7 @@ import {
   resetBrowserManagerState
 } from './browser-manager-test-harness'
 import {
+  attachMockGuest,
   createViewportGuestFactory,
   flushViewportOps
 } from './browser-manager-viewport-test-fixtures'
@@ -61,7 +71,7 @@ describe('viewport request ordering across replacement', () => {
     const next = makeGuest(4301)
     const tab = 'tab-newer-preset'
     webContentsFromIdMock.mockReturnValue(old.guest)
-    browserManager.attachGuestPolicies(old.guest as never)
+    attachMockGuest(browserManager, old.guest)
     browserManager.registerGuest({
       browserPageId: tab,
       webContentsId: 4300,
@@ -98,7 +108,7 @@ describe('viewport request ordering across replacement', () => {
       expect.anything()
     )
     webContentsFromIdMock.mockReturnValue(next.guest)
-    browserManager.attachGuestPolicies(next.guest as never)
+    attachMockGuest(browserManager, next.guest)
     browserManager.registerGuest({
       browserPageId: tab,
       webContentsId: 4301,
@@ -118,7 +128,7 @@ describe('viewport request ordering across replacement', () => {
     const next = makeGuest(4303)
     const tab = 'tab-newer-clear'
     webContentsFromIdMock.mockReturnValue(old.guest)
-    browserManager.attachGuestPolicies(old.guest as never)
+    attachMockGuest(browserManager, old.guest)
     browserManager.registerGuest({
       browserPageId: tab,
       webContentsId: 4302,
@@ -147,7 +157,7 @@ describe('viewport request ordering across replacement', () => {
     releaseTouch()
     await flushViewportOps()
     webContentsFromIdMock.mockReturnValue(next.guest)
-    browserManager.attachGuestPolicies(next.guest as never)
+    attachMockGuest(browserManager, next.guest)
     next.debuggerSendCommand.mockClear()
     browserManager.registerGuest({
       browserPageId: tab,
@@ -168,7 +178,7 @@ describe('viewport request ordering across replacement', () => {
     const next = makeGuest(4305)
     const tab = 'tab-failed-clear-newer-set'
     webContentsFromIdMock.mockReturnValue(old.guest)
-    browserManager.attachGuestPolicies(old.guest as never)
+    attachMockGuest(browserManager, old.guest)
     browserManager.registerGuest({
       browserPageId: tab,
       webContentsId: 4304,
@@ -189,7 +199,7 @@ describe('viewport request ordering across replacement', () => {
     await flushViewportOps()
     const second = browserManager.setViewportOverride(tab, newer)
     webContentsFromIdMock.mockReturnValue(next.guest)
-    browserManager.attachGuestPolicies(next.guest as never)
+    attachMockGuest(browserManager, next.guest)
     browserManager.registerGuest({
       browserPageId: tab,
       webContentsId: 4305,

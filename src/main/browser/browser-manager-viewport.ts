@@ -81,11 +81,7 @@ export abstract class BrowserManagerViewport extends BrowserManagerDownloadLifec
   ): void {
     if (override) {
       this.viewportOverrideByTabId.set(browserTabId, { ...override })
-      if (this.userAgentModeByPageId.get(browserTabId) !== 'native') {
-        this.viewportUaOverrideMobileByTabId.set(browserTabId, override.mobile)
-      } else {
-        this.viewportUaOverrideMobileByTabId.delete(browserTabId)
-      }
+      this.viewportUaOverrideMobileByTabId.set(browserTabId, override.mobile)
       return
     }
     this.viewportOverrideByTabId.delete(browserTabId)
@@ -109,6 +105,9 @@ export abstract class BrowserManagerViewport extends BrowserManagerDownloadLifec
   }
 
   protected override reapplyStandingViewportOverride(browserTabId: string): void {
+    if (!this.viewportOverrideByTabId.has(browserTabId)) {
+      return
+    }
     void this.enqueueViewportOperation(browserTabId, async () => {
       const override = this.viewportOverrideByTabId.get(browserTabId)
       if (!override) {
@@ -234,11 +233,8 @@ export abstract class BrowserManagerViewport extends BrowserManagerDownloadLifec
         if (!stillOnExpectedGuest()) {
           return false
         }
-        // Why: viewport sizing must not override a profile's explicit native-UA identity.
-        if (this.userAgentModeByPageId.get(browserTabId) !== 'native') {
-          // Why: same sender as the navigation path, so both resolve the tab's host identically.
-          await this.sendViewportUserAgentOverride(guest, override.mobile)
-        }
+        // Why: same sender as the navigation path, so both resolve the tab's host identically.
+        await this.sendViewportUserAgentOverride(guest, override.mobile)
       } else {
         await dbg.sendCommand('Emulation.clearDeviceMetricsOverride', {})
         if (this.webContentsIdByTabId.get(browserTabId) === webContentsId) {
