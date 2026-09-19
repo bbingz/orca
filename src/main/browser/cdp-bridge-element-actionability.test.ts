@@ -55,7 +55,7 @@ function createStack(): ActionabilityStack {
     setActiveWebContentsId: () => undefined,
     getRegisteredTabs: () => registeredTabs,
     getTabIdForWebContentsId: (webContentsId) =>
-      webContentsId === 11 ? 'tab-1' : (null as string | null),
+      webContentsId === 11 ? 'tab-1' : null,
     tabState,
     commandQueues: new Map(),
     processingQueues: new Set()
@@ -83,6 +83,7 @@ function createInteractabilitySender(options: InteractabilityOptions): CdpComman
 
     const declaration = String(params?.functionDeclaration)
     const compile = new Function('getComputedStyle', `return (${declaration})`)
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: compiled function returns string interactability verdict
     const check = compile(() => ({
       display: 'block',
       visibility: 'visible'
@@ -141,7 +142,8 @@ function createInteractabilitySender(options: InteractabilityOptions): CdpComman
     if (options.slottedHitDescendant) {
       hitDescendant.assignedSlot = { parentElement: target }
     }
-    const values = ((params?.arguments ?? []) as { value: unknown }[]).map(({ value }) => value)
+    const args = Array.isArray(params?.arguments) ? params.arguments : []
+    const values = args.map((arg) => (typeof arg === 'object' && arg !== null && 'value' in arg ? arg.value : undefined))
     if (options.evaluationException) {
       return { result: {}, exceptionDetails: { text: 'Uncaught TypeError' } }
     }
@@ -240,6 +242,21 @@ function createIframeHarness(options?: {
   }
 }
 
+function makeRefEntry(backendDOMNodeId: number, sessionId?: string): RefEntry {
+  return { backendDOMNodeId, sessionId, role: 'button', name: 'target' }
+}
+
+function getPageCoordinates(
+  actionability: ReturnType<typeof createStack>['actionability'],
+  guest: unknown,
+  entry: RefEntry,
+  cx: number,
+  cy: number
+) {
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: unit test guest harness passed to actionability
+  return actionability.getPageCoordinates(guest as never, entry, cx, cy)
+}
+
 describe('CDP element actionability', () => {
   it('records each iframe session immediate parent from debugger events', async () => {
     const { lifecycle, tabState } = createStack()
@@ -281,6 +298,7 @@ describe('CDP element actionability', () => {
         sendCommand
       }
     }
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: unit test guest mock passed to ensureDebuggerAttached
     await lifecycle.ensureDebuggerAttached(guest as never)
 
     expect(tabState.get('tab-1')?.iframeParentSessions).toEqual(
@@ -374,9 +392,9 @@ describe('CDP element actionability', () => {
 
   it('resolves duplicate iframe URLs by frame identity', async () => {
     const { actionability, guest, sendCommand } = createIframeHarness()
-    const entry = { backendDOMNodeId: 7, sessionId: 'session-2' } as RefEntry
+    const entry = makeRefEntry(7, 'session-2')
 
-    await expect(actionability.getPageCoordinates(guest as never, entry, 20, 30)).resolves.toEqual({
+    await expect(getPageCoordinates(actionability, guest, entry, 20, 30)).resolves.toEqual({
       cx: 220,
       cy: 130
     })
@@ -392,18 +410,18 @@ describe('CDP element actionability', () => {
       }
       return original(...args)
     })
-    const entry = { backendDOMNodeId: 7, sessionId: 'session-2' } as RefEntry
+    const entry = makeRefEntry(7, 'session-2')
     await expect(
-      actionability.getPageCoordinates(guest as never, entry, 20, 30)
+      getPageCoordinates(actionability, guest, entry, 20, 30)
     ).rejects.toMatchObject({ code: 'browser_cdp_error' })
   })
 
   it('rejects an iframe pointer target covered in the parent page', async () => {
     const { actionability, guest } = createIframeHarness({ covered: true })
-    const entry = { backendDOMNodeId: 7, sessionId: 'session-2' } as RefEntry
+    const entry = makeRefEntry(7, 'session-2')
 
     await expect(
-      actionability.getPageCoordinates(guest as never, entry, 20, 30)
+      getPageCoordinates(actionability, guest, entry, 20, 30)
     ).rejects.toMatchObject({
       code: 'browser_element_not_interactable'
     })
@@ -411,10 +429,10 @@ describe('CDP element actionability', () => {
 
   it('classifies a missing iframe owner layout box as not interactable', async () => {
     const { actionability, guest } = createIframeHarness({ ownerMissingLayout: true })
-    const entry = { backendDOMNodeId: 7, sessionId: 'session-2' } as RefEntry
+    const entry = makeRefEntry(7, 'session-2')
 
     await expect(
-      actionability.getPageCoordinates(guest as never, entry, 20, 30)
+      getPageCoordinates(actionability, guest, entry, 20, 30)
     ).rejects.toMatchObject({
       code: 'browser_element_not_interactable'
     })
@@ -422,9 +440,9 @@ describe('CDP element actionability', () => {
 
   it('resolves a nested OOPIF through each immediate parent session', async () => {
     const { actionability, guest, sendCommand } = createIframeHarness({ nested: true })
-    const entry = { backendDOMNodeId: 7, sessionId: 'session-2' } as RefEntry
+    const entry = makeRefEntry(7, 'session-2')
 
-    await expect(actionability.getPageCoordinates(guest as never, entry, 20, 30)).resolves.toEqual({
+    await expect(getPageCoordinates(actionability, guest, entry, 20, 30)).resolves.toEqual({
       cx: 270,
       cy: 170
     })
@@ -437,9 +455,9 @@ describe('CDP element actionability', () => {
 
   it('maps child viewport coordinates through a scaled iframe quad', async () => {
     const { actionability, guest } = createIframeHarness({ transformed: true })
-    const entry = { backendDOMNodeId: 7, sessionId: 'session-2' } as RefEntry
+    const entry = makeRefEntry(7, 'session-2')
 
-    await expect(actionability.getPageCoordinates(guest as never, entry, 100, 50)).resolves.toEqual(
+    await expect(getPageCoordinates(actionability, guest, entry, 100, 50)).resolves.toEqual(
       {
         cx: 500,
         cy: 300
@@ -449,9 +467,9 @@ describe('CDP element actionability', () => {
 
   it('maps child viewport coordinates through a perspective iframe quad', async () => {
     const { actionability, guest } = createIframeHarness({ perspective: true })
-    const entry = { backendDOMNodeId: 7, sessionId: 'session-2' } as RefEntry
+    const entry = makeRefEntry(7, 'session-2')
 
-    const result = await actionability.getPageCoordinates(guest as never, entry, 340, 55)
+    const result = await getPageCoordinates(actionability, guest, entry, 340, 55)
 
     expect(result.cx).toBeCloseTo(270.461, 3)
     expect(result.cy).toBeCloseTo(133.973, 3)

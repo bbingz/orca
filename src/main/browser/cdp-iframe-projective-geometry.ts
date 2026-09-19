@@ -86,6 +86,7 @@ export async function readElementBoxModel(
   missingLayoutMessage: string
 ): Promise<CdpBoxModel> {
   try {
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: DOM.getBoxModel returns { model: CdpBoxModel }
     const { model } = (await sender('DOM.getBoxModel', { backendNodeId })) as {
       model: CdpBoxModel
     }
@@ -117,6 +118,7 @@ export async function resolveIframeOwnerGeometry(
   const parentSessionId = state.iframeParentSessions.get(sessionId) ?? null
   const parentSender = host.makeCdpSender(guest, parentSessionId ?? undefined)
   const childSender = host.makeCdpSender(guest, sessionId)
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: CDP commands return frameTree and cssLayoutViewport
   const [{ frameTree }, { cssLayoutViewport }] = (await Promise.all([
     childSender('Page.getFrameTree'),
     childSender('Page.getLayoutMetrics')
@@ -131,6 +133,7 @@ export async function resolveIframeOwnerGeometry(
       'Could not resolve the iframe coordinate space. Re-snapshot and retry.'
     )
   }
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: CDP DOM.getFrameOwner returns backendNodeId
   const { backendNodeId } = (await parentSender('DOM.getFrameOwner', { frameId })) as {
     backendNodeId?: number
   }

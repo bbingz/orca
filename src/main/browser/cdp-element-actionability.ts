@@ -82,10 +82,13 @@ export class CdpElementActionability {
     ref: string,
     requirements: ElementActionabilityRequirements = {}
   ): Promise<void> {
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: DOM.requestNode returns nodeId
     const { nodeId } = (await sender('DOM.requestNode', { backendNodeId })) as { nodeId: number }
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: DOM.resolveNode returns objectId
     const { object } = (await sender('DOM.resolveNode', { nodeId })) as {
       object: { objectId: string }
     }
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Runtime.callFunctionOn payload contains result or exceptionDetails
     const { result, exceptionDetails } = (await sender('Runtime.callFunctionOn', {
       objectId: object.objectId,
       functionDeclaration: INTERACTABILITY_CHECK,
@@ -175,6 +178,7 @@ export class CdpElementActionability {
     cx: number,
     cy: number
   ): Promise<void> {
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: DOM.resolveNode returns objectId
     const { object } = (await sender('DOM.resolveNode', { backendNodeId })) as {
       object?: { objectId?: string }
     }
@@ -184,6 +188,7 @@ export class CdpElementActionability {
         'Could not resolve the iframe owner. Re-snapshot and retry.'
       )
     }
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Runtime.callFunctionOn payload contains result or exceptionDetails
     const { result, exceptionDetails } = (await sender('Runtime.callFunctionOn', {
       objectId: object.objectId,
       functionDeclaration: `function(cx, cy) {

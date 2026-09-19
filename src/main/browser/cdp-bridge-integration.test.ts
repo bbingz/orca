@@ -102,7 +102,9 @@ describe('Browser automation pipeline (integration)', () => {
   function interceptCdp(
     handler: (method: string, params?: Record<string, unknown>) => unknown
   ): void {
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: active guest harness provides sendCommandMock as vitest mock
     const sendCommand = activeGuestHarness.sendCommandMock as ReturnType<typeof vi.fn>
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: previous implementation matches CDP command sender signature
     const previous = sendCommand.getMockImplementation() as (
       method: string,
       params?: Record<string, unknown>
@@ -125,6 +127,7 @@ describe('Browser automation pipeline (integration)', () => {
   ): { result: { value: string } } {
     const declaration = String(params?.functionDeclaration)
     const compile = new Function('getComputedStyle', `return (${declaration})`)
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: compiled function returns string interactability verdict
     const check = compile(() => ({
       display: 'block',
       visibility: 'visible',
@@ -150,7 +153,8 @@ describe('Browser automation pipeline (integration)', () => {
     target.ownerDocument = ownerDocument
     target.getRootNode = () =>
       options?.shadowRoot ? { elementFromPoint: () => target } : ownerDocument
-    const values = ((params?.arguments ?? []) as { value: unknown }[]).map(({ value }) => value)
+    const args = Array.isArray(params?.arguments) ? params.arguments : []
+    const values = args.map((arg) => (typeof arg === 'object' && arg !== null && 'value' in arg ? arg.value : undefined))
     return { result: { value: check.call(target, ...values) } }
   }
 
@@ -232,7 +236,7 @@ describe('Browser automation pipeline (integration)', () => {
     const res = await rpc('browser.click', { element: '@e1' })
 
     expect(res.ok).toBe(false)
-    expect((res.error as { code: string }).code).toBe('browser_element_not_interactable')
+    expect(res.error).toMatchObject({ code: 'browser_element_not_interactable' })
   })
 
   it('preserves CDP transport errors while reading the layout box', async () => {
@@ -247,7 +251,7 @@ describe('Browser automation pipeline (integration)', () => {
     const res = await rpc('browser.click', { element: '@e1' })
 
     expect(res.ok).toBe(false)
-    expect((res.error as { code: string }).code).toBe('browser_cdp_error')
+    expect(res.error).toMatchObject({ code: 'browser_cdp_error' })
   })
 
   it('does not misclassify unknown getBoxModel protocol errors', async () => {
@@ -262,7 +266,7 @@ describe('Browser automation pipeline (integration)', () => {
     const res = await rpc('browser.click', { element: '@e1' })
 
     expect(res.ok).toBe(false)
-    expect((res.error as { code: string }).code).toBe('runtime_error')
+    expect(res.error).toMatchObject({ code: 'runtime_error' })
   })
 
   it('rejects zero-size pointer targets', async () => {
@@ -276,7 +280,7 @@ describe('Browser automation pipeline (integration)', () => {
     const res = await rpc('browser.click', { element: '@e1' })
 
     expect(res.ok).toBe(false)
-    expect((res.error as { code: string }).code).toBe('browser_element_not_interactable')
+    expect(res.error).toMatchObject({ code: 'browser_element_not_interactable' })
   })
 
   it.each([
@@ -297,7 +301,7 @@ describe('Browser automation pipeline (integration)', () => {
     const res = await rpc(method, params)
 
     expect(res.ok).toBe(false)
-    expect((res.error as { code: string }).code).toBe('browser_element_not_interactable')
+    expect(res.error).toMatchObject({ code: 'browser_element_not_interactable' })
   })
 
   it.each([
@@ -335,7 +339,8 @@ describe('Browser automation pipeline (integration)', () => {
         method === 'Runtime.callFunctionOn' &&
         String(params?.functionDeclaration).includes('elementFromPoint')
       ) {
-        expect(((params?.arguments ?? []) as unknown[]).slice(0, 2)).toEqual([
+        const args = Array.isArray(params?.arguments) ? params.arguments : []
+        expect(args.slice(0, 2)).toEqual([
           { value: 200 },
           { value: 225 }
         ])
@@ -347,7 +352,7 @@ describe('Browser automation pipeline (integration)', () => {
     const res = await rpc('browser.click', { element: '@e1' })
 
     expect(res.ok).toBe(false)
-    expect((res.error as { code: string }).code).toBe('browser_element_not_interactable')
+    expect(res.error).toMatchObject({ code: 'browser_element_not_interactable' })
   })
 
   it('accepts a pointer target reached through its shadow root hit test', async () => {
@@ -469,7 +474,7 @@ describe('Browser automation pipeline (integration)', () => {
     const res = await rpc('browser.fill', { element: '@e2', value: 'hidden' })
 
     expect(res.ok).toBe(false)
-    expect((res.error as { code: string }).code).toBe('browser_element_not_interactable')
+    expect(res.error).toMatchObject({ code: 'browser_element_not_interactable' })
   })
 
   it('rejects fill when the input is readonly', async () => {
@@ -488,7 +493,7 @@ describe('Browser automation pipeline (integration)', () => {
     const res = await rpc('browser.fill', { element: '@e2', value: 'readonly' })
 
     expect(res.ok).toBe(false)
-    expect((res.error as { code: string }).code).toBe('browser_element_not_interactable')
+    expect(res.error).toMatchObject({ code: 'browser_element_not_interactable' })
   })
 
   it('rejects fill on a non-editable element', async () => {
@@ -506,7 +511,7 @@ describe('Browser automation pipeline (integration)', () => {
     const res = await rpc('browser.fill', { element: '@e1', value: 'not editable' })
 
     expect(res.ok).toBe(false)
-    expect((res.error as { code: string }).code).toBe('browser_element_not_interactable')
+    expect(res.error).toMatchObject({ code: 'browser_element_not_interactable' })
   })
 
   it('chunks large browser fill text before CDP insertText', async () => {
