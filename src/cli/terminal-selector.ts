@@ -50,7 +50,7 @@ export async function resolveTerminalSelector(
     !match &&
     targetHost &&
     targetHost !== 'foreign' &&
-    listed.result.hostScope?.omittedHostIds.includes(targetHost)
+    Boolean(listed.result.hostScope?.omittedHostIds?.includes(targetHost))
   ) {
     listed = await listCachedTerminal(client, ptyId)
     match = listed.result.terminals.find(

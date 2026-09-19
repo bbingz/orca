@@ -2,9 +2,14 @@ import { describe, expect, it, vi } from 'vitest'
 import { resolveTerminalSelector } from './selectors'
 import type { RuntimeClient } from './runtime-client'
 
+function createMockClient(call: unknown): RuntimeClient {
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: unit test mock providing only client.call
+  return { call } as unknown as RuntimeClient
+}
+
 describe('resolveTerminalSelector', () => {
   it('passes through ordinary handles', async () => {
-    const client = { call: vi.fn() } as unknown as RuntimeClient
+    const client = createMockClient(vi.fn())
     await expect(resolveTerminalSelector('term_abc', client)).resolves.toBe('term_abc')
     expect(client.call).not.toHaveBeenCalled()
   })
@@ -20,7 +25,7 @@ describe('resolveTerminalSelector', () => {
         totalCount: 2
       }
     })
-    const client = { call } as unknown as RuntimeClient
+    const client = createMockClient(call)
     await expect(resolveTerminalSelector('pty:pty-stable-1', client)).resolves.toBe('term_new')
     expect(call).toHaveBeenCalledWith('terminal.list', {
       limit: 200,
@@ -41,7 +46,7 @@ describe('resolveTerminalSelector', () => {
         totalCount: 2
       }
     })
-    const client = { call } as unknown as RuntimeClient
+    const client = createMockClient(call)
 
     await expect(resolveTerminalSelector('pty:pty-stable-1', client)).resolves.toBe('term_new')
   })
@@ -57,7 +62,7 @@ describe('resolveTerminalSelector', () => {
         totalCount: 2
       }
     })
-    const client = { call } as unknown as RuntimeClient
+    const client = createMockClient(call)
 
     await expect(resolveTerminalSelector('pty:pty-stable-1', client)).resolves.toBe('term_live')
   })
@@ -70,7 +75,7 @@ describe('resolveTerminalSelector', () => {
         totalCount: 1
       }
     })
-    const client = { call } as unknown as RuntimeClient
+    const client = createMockClient(call)
 
     await expect(resolveTerminalSelector('pty:pty-stable-1', client)).rejects.toMatchObject({
       code: 'terminal_not_found'
@@ -88,7 +93,7 @@ describe('resolveTerminalSelector', () => {
           totalCount: 1
         }
       })
-    const client = { call } as unknown as RuntimeClient
+    const client = createMockClient(call)
 
     await expect(resolveTerminalSelector('pty:pty-stable-1', client)).resolves.toBe('term_cached')
     expect(call).toHaveBeenNthCalledWith(2, 'terminal.list', {
@@ -117,7 +122,7 @@ describe('resolveTerminalSelector', () => {
           totalCount: 1
         }
       })
-    const client = { call } as unknown as RuntimeClient
+    const client = createMockClient(call)
 
     await expect(resolveTerminalSelector(`pty:${ptyId}`, client)).resolves.toBe('term_cached')
     expect(call).toHaveBeenNthCalledWith(2, 'terminal.list', {
@@ -128,7 +133,7 @@ describe('resolveTerminalSelector', () => {
   })
 
   it('rejects empty pty ids', async () => {
-    const client = { call: vi.fn() } as unknown as RuntimeClient
+    const client = createMockClient(vi.fn())
     await expect(resolveTerminalSelector('pty:', client)).rejects.toMatchObject({
       code: 'invalid_argument'
     })
@@ -143,7 +148,7 @@ describe('resolveTerminalSelector', () => {
         totalCount: 1
       }
     })
-    const client = { call } as unknown as RuntimeClient
+    const client = createMockClient(call)
     await expect(resolveTerminalSelector('pty:missing', client)).rejects.toMatchObject({
       code: 'terminal_not_found'
     })
@@ -157,7 +162,7 @@ describe('resolveTerminalSelector', () => {
         totalCount: 900
       }
     })
-    const client = { call } as unknown as RuntimeClient
+    const client = createMockClient(call)
     await expect(resolveTerminalSelector('pty:beyond-page', client)).rejects.toMatchObject({
       code: 'terminal_not_found',
       message: expect.stringMatching(/truncated/i)
