@@ -21,17 +21,19 @@ function previewLinkHandler(): (event: MouseEvent, uri: string) => void {
     loadAddon: vi.fn(),
     clearSelection: vi.fn()
   }
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Test stub provides mocked Terminal subset consumed by installPreviewTerminalLinks.
   installPreviewTerminalLinks(terminal as never)
-  const handler = WebLinksAddonMock.mock.calls.at(-1)?.[0] as
-    | ((event: MouseEvent, uri: string) => void)
-    | undefined
-  if (!handler) {
+  const fn = WebLinksAddonMock.mock.calls.at(-1)?.[0]
+  if (typeof fn !== 'function') {
     throw new Error('Expected WebLinksAddon handler')
   }
-  return handler
+  return (event: MouseEvent, uri: string) => {
+    fn(event, uri)
+  }
 }
 
 function mouseEvent(init: Partial<MouseEvent>): MouseEvent {
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Test mock for DOM MouseEvent in node test environment.
   return {
     button: 0,
     metaKey: false,
@@ -40,7 +42,7 @@ function mouseEvent(init: Partial<MouseEvent>): MouseEvent {
     shiftKey: false,
     preventDefault: vi.fn(),
     ...init
-  } as MouseEvent
+  } as never
 }
 
 describe('installPreviewTerminalLinks custom schemes', () => {

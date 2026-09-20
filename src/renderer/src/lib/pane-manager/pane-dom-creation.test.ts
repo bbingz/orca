@@ -5,14 +5,20 @@ import { TERMINAL_WEB_AND_APP_URL_REGEX } from '../../../../shared/external-app-
 import { getTerminalCustomAppSchemeOpenHint } from '@/components/terminal-pane/terminal-link-open-hints'
 import { createPaneDOM } from './pane-dom-creation'
 
-const webLinksAddonMock = vi.hoisted(() => ({
-  handler: null as ((event: MouseEvent, uri: string) => void) | null,
-  options: null as {
-    hover?: (event: MouseEvent, uri: string) => void
-    leave?: () => void
-    urlRegex?: RegExp
-  } | null
-}))
+const webLinksAddonMock = vi.hoisted(() => {
+  const state: {
+    handler: ((event: MouseEvent, uri: string) => void) | null
+    options: {
+      hover?: (event: MouseEvent, uri: string) => void
+      leave?: () => void
+      urlRegex?: RegExp
+    } | null
+  } = {
+    handler: null,
+    options: null
+  }
+  return state
+})
 
 vi.mock('@xterm/addon-fit', () => ({
   FitAddon: vi.fn().mockImplementation(function FitAddon() {
@@ -190,7 +196,10 @@ describe('createPaneDOM link tooltips', () => {
       vi.fn()
     )
 
-    webLinksAddonMock.options?.hover?.({} as MouseEvent, 'obsidian://open?vault=notes')
+    webLinksAddonMock.options?.hover?.(
+      new MouseEvent('mouseover'),
+      'obsidian://open?vault=notes'
+    )
     expect(pane.linkTooltip.textContent).toBe(
       `obsidian://open?vault=notes (${getTerminalCustomAppSchemeOpenHint()})`
     )
