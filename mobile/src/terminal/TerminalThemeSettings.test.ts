@@ -12,21 +12,28 @@ import {
   type TerminalThemeSlot
 } from './TerminalThemeSettings'
 
+declare global {
+  var IS_REACT_ACT_ENVIRONMENT: boolean | undefined
+}
+
 const DEFAULTS: MobileTerminalThemeSelection = {
   dark: null,
   light: null,
   useSeparateLightTheme: true
 }
 
-const store = vi.hoisted(() => ({
-  selection: {
+const store = vi.hoisted(() => {
+  const selection: MobileTerminalThemeSelection = {
     dark: null,
     light: null,
     useSeparateLightTheme: true
-  } as MobileTerminalThemeSelection,
-  listeners: new Set<() => void>(),
-  save: vi.fn()
-}))
+  }
+  return {
+    selection,
+    listeners: new Set<() => void>(),
+    save: vi.fn()
+  }
+})
 
 vi.mock('react-native', () => ({
   Pressable: 'Pressable',
@@ -48,14 +55,6 @@ vi.mock('../storage/terminal-theme-preference', () => ({
   saveMobileTerminalThemeSelection: store.save
 }))
 
-const { drawerRender } = vi.hoisted(() => ({ drawerRender: vi.fn() }))
-vi.mock('../components/PickerListDrawer', () => ({
-  PickerListDrawer: (props: unknown) => {
-    drawerRender(props)
-    return null
-  }
-}))
-
 type DrawerProps = {
   visible: boolean
   title: string
@@ -65,19 +64,32 @@ type DrawerProps = {
   onClose: () => void
 }
 
+const { drawerRender } = vi.hoisted(() => ({
+  drawerRender: vi.fn<(props: DrawerProps) => void>()
+}))
+vi.mock('../components/PickerListDrawer', () => ({
+  PickerListDrawer: (props: DrawerProps) => {
+    drawerRender(props)
+    return null
+  }
+}))
+
 function lastDrawerProps(): DrawerProps {
   const call = drawerRender.mock.calls.at(-1)
   if (!call) {
     throw new Error('PickerListDrawer never rendered')
   }
-  return call[0] as DrawerProps
+  return call[0]
 }
 
 function flattenStyle(style: unknown): Record<string, unknown> {
   if (Array.isArray(style)) {
     return Object.assign({}, ...style.map(flattenStyle))
   }
-  return (style ?? {}) as Record<string, unknown>
+  if (typeof style === 'object' && style !== null) {
+    return Object.assign({}, style)
+  }
+  return {}
 }
 
 function slotRow(renderer: ReactTestRenderer, label: string) {
@@ -108,7 +120,7 @@ describe('TerminalThemeSettings', () => {
   const openSlot = vi.fn()
 
   beforeEach(() => {
-    ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
+    globalThis.IS_REACT_ACT_ENVIRONMENT = true
     store.selection = DEFAULTS
     store.listeners.clear()
     openSlot.mockClear()
@@ -168,8 +180,9 @@ describe('TerminalThemeSettings', () => {
 
   it('opens the slot the row belongs to', () => {
     renderer = renderSection()
+    const current = renderer
     act(() => {
-      slotRow(renderer as ReactTestRenderer, 'Dark theme').props.onPress()
+      slotRow(current, 'Dark theme').props.onPress()
     })
     expect(openSlot).toHaveBeenCalledWith('dark')
   })
@@ -187,7 +200,7 @@ describe('TerminalThemePickerDrawer', () => {
   let renderer: ReactTestRenderer | null = null
 
   beforeEach(() => {
-    ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
+    globalThis.IS_REACT_ACT_ENVIRONMENT = true
     store.selection = DEFAULTS
     store.listeners.clear()
     drawerRender.mockClear()

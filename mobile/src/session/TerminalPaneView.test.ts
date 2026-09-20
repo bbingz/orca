@@ -4,7 +4,9 @@ import { afterAll, describe, expect, it, vi } from 'vitest'
 import { getBuiltinTerminalThemePalette } from '../../../src/shared/terminal-themes'
 import type { MobileTerminalTheme } from '../terminal/terminal-webview-contract'
 
-const { terminalWebViewRender } = vi.hoisted(() => ({ terminalWebViewRender: vi.fn() }))
+const { terminalWebViewRender } = vi.hoisted(() => ({
+  terminalWebViewRender: vi.fn<(props: { terminalTheme?: MobileTerminalTheme }) => void>()
+}))
 
 vi.mock('react-native', () => ({
   StyleSheet: { create: <T>(styles: T) => styles, absoluteFillObject: {} },
@@ -12,7 +14,7 @@ vi.mock('react-native', () => ({
 }))
 
 vi.mock('../terminal/TerminalWebView', () => ({
-  TerminalWebView: (props: unknown) => {
+  TerminalWebView: (props: { terminalTheme?: MobileTerminalTheme }) => {
     terminalWebViewRender(props)
     return null
   }
@@ -46,10 +48,7 @@ const hostTheme: MobileTerminalTheme = {
 }
 
 function lastTerminalThemeProp(): MobileTerminalTheme | undefined {
-  const props = terminalWebViewRender.mock.calls.at(-1)?.[0] as {
-    terminalTheme?: MobileTerminalTheme
-  }
-  return props.terminalTheme
+  return terminalWebViewRender.mock.calls.at(-1)?.[0]?.terminalTheme
 }
 
 describe('TerminalPaneView', () => {

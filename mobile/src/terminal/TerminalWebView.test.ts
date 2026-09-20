@@ -46,16 +46,20 @@ function suppressReactTestRendererDeprecationWarning(): () => void {
 
 const restoreConsoleError = suppressReactTestRendererDeprecationWarning()
 
+function asStyleArray(style: unknown): unknown[] {
+  return Array.isArray(style) ? style : [style]
+}
+
 async function renderFrame(terminalTheme?: MobileTerminalTheme) {
   let renderer!: ReactTestRenderer
   await act(async () => {
     renderer = create(createElement(TerminalWebView, { terminalTheme }))
   })
-  const container = renderer.root.findByType('View' as never)
-  const webView = renderer.root.findByType('WebView' as never)
+  const container = renderer.root.find((node) => node.type === 'View')
+  const webView = renderer.root.find((node) => node.type === 'WebView')
   return {
-    containerStyle: container.props.style as unknown[],
-    webViewStyle: webView.props.style as unknown[],
+    containerStyle: asStyleArray(container.props.style),
+    webViewStyle: asStyleArray(webView.props.style),
     unmount: async () => {
       await act(async () => {
         renderer.unmount()
@@ -82,6 +86,7 @@ describe('TerminalWebView frame background', () => {
 
   // Why: `terminalTheme` is unvalidated wire data, so a version-mismatched host may push no palette.
   it('falls back to the app terminal background when the host pushes no palette object', async () => {
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Simulates version-mismatched wire payload missing theme palette.
     const frame = await renderFrame({ mode: 'dark' } as unknown as MobileTerminalTheme)
 
     expect(frame.containerStyle[1]).toBeNull()
