@@ -37,6 +37,16 @@ export function getProjectProviderIdentity(
       ...(repo.upstream?.host ? { host: repo.upstream.host } : {})
     }
   }
+  // Why: gitRemoteIdentity reflects the probed live git remote and is kept
+  // current by background enrichment sweeps. It must take precedence over
+  // repoIcon, which is a presentation artifact that may hold a stale pre-transfer
+  // or pre-rename slug (issue #21515).
+  const fromRemote =
+    parseGitHubRemoteUrl(repo.gitRemoteIdentity?.remoteUrl) ??
+    parseGitHubCanonicalKey(repo.gitRemoteIdentity?.canonicalKey)
+  if (fromRemote) {
+    return fromRemote
+  }
   if (repo.repoIcon?.type === 'image' && repo.repoIcon.source === 'github') {
     const parts = (repo.repoIcon.label?.trim() ?? '').split('/')
     const iconOwner = parts[0]?.trim()
@@ -59,12 +69,7 @@ export function getProjectProviderIdentity(
       }
     }
   }
-  // Why: the remote URL retains HTTP(S) endpoint ports that the canonical
-  // key omits, so prefer it when reconstructing a host-qualified GHES identity.
-  return (
-    parseGitHubRemoteUrl(repo.gitRemoteIdentity?.remoteUrl) ??
-    parseGitHubCanonicalKey(repo.gitRemoteIdentity?.canonicalKey)
-  )
+  return null
 }
 
 function getProjectGitRemoteIdentity(

@@ -322,6 +322,57 @@ describe('project host setup projection', () => {
     })
   })
 
+  it('prefers freshly probed gitRemoteIdentity over a stale cached repoIcon (issue #21515)', () => {
+    // Why: when a repo is transferred or renamed, gitRemoteIdentity is updated by enrichment sweeps
+    // while the cached repoIcon may still hold the old pre-transfer slug. The authoritative remote
+    // must take precedence so multi-host projects do not split.
+    const projection = projectHostSetupProjectionFromRepos([
+      repo({
+        id: 'host-a-repo',
+        path: '/work/app',
+        displayName: 'app',
+        gitRemoteIdentity: {
+          canonicalKey: 'github.com/org-b/app',
+          remoteName: 'origin',
+          remoteUrl: 'https://github.com/org-b/app.git'
+        },
+        repoIcon: {
+          type: 'image',
+          src: 'https://github.com/org-b.png?size=64',
+          source: 'github',
+          label: 'org-b/app'
+        }
+      }),
+      repo({
+        id: 'host-b-repo',
+        path: '/home/user/app',
+        displayName: 'app',
+        connectionId: 'builder-vm',
+        gitRemoteIdentity: {
+          canonicalKey: 'github.com/org-b/app',
+          remoteName: 'origin',
+          remoteUrl: 'https://github.com/org-b/app.git'
+        },
+        // Host B has the stale pre-transfer repoIcon cached
+        repoIcon: {
+          type: 'image',
+          src: 'https://github.com/owner-a.png?size=64',
+          source: 'github',
+          label: 'owner-a/app'
+        }
+      })
+    ])
+
+    expect(projection.projects).toHaveLength(1)
+    expect(projection.projects[0]).toMatchObject({
+      id: 'github:org-b/app',
+      displayName: 'app',
+      sourceRepoIds: ['host-a-repo', 'host-b-repo'],
+      providerIdentity: { provider: 'github', owner: 'org-b', repo: 'app' }
+    })
+    expect(getProjectHostSetupsForProject(projection.setups, 'github:org-b/app')).toHaveLength(2)
+  })
+
   it('uses a GHES canonical remote identity when the remote URL is unavailable', () => {
     const projection = projectHostSetupProjectionFromRepos([
       repo({
