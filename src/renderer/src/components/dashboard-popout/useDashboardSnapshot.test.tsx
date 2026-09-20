@@ -266,4 +266,58 @@ describe('useDashboardSnapshot', () => {
     expect(requestSnapshot).toHaveBeenCalledTimes(1)
     vi.useRealTimers()
   })
+
+  it('safely catches and suppresses InvalidStateError promise rejections from aborted transitions (#21345)', async () => {
+    class MockDOMException extends Error {
+      name = 'InvalidStateError'
+      constructor(message: string) {
+        super(message)
+      }
+    }
+
+    const abortError = new MockDOMException('Transition was aborted because of invalid state')
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Mocking startViewTransition on document for testing.
+    ;(document as unknown as { startViewTransition: unknown }).startViewTransition = vi.fn(
+      (cb: () => void) => {
+        cb()
+        return {
+          finished: Promise.reject(abortError),
+          ready: Promise.reject(abortError),
+          updateCallbackDone: Promise.resolve()
+        }
+      }
+    )
+
+    const { result } = renderHook(() => useDashboardSnapshot())
+    act(() => apply(snapshot([card({ bucket: 'idle' })])))
+
+    await act(async () => {
+      apply(snapshot([card({ bucket: 'working' })]))
+    })
+
+    expect(result.current.cards[0].bucket).toBe('working')
+  })
+
+  it('falls back to direct state update when startViewTransition throws synchronously (#21345)', () => {
+    class MockDOMException extends Error {
+      name = 'InvalidStateError'
+      constructor(message: string) {
+        super(message)
+      }
+    }
+
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Mocking startViewTransition on document for testing.
+    ;(document as unknown as { startViewTransition: unknown }).startViewTransition = vi.fn(() => {
+      throw new MockDOMException('Transition was aborted because of invalid state')
+    })
+
+    const { result } = renderHook(() => useDashboardSnapshot())
+    act(() => apply(snapshot([card({ bucket: 'idle' })])))
+
+    act(() => {
+      apply(snapshot([card({ bucket: 'working' })]))
+    })
+
+    expect(result.current.cards[0].bucket).toBe('working')
+  })
 })

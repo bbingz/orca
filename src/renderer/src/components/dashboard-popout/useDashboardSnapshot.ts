@@ -31,6 +31,31 @@ function terminalDialogIsOpen(): boolean {
   return document.querySelector('[role="dialog"][data-state="open"]') !== null
 }
 
+type ViewTransitionLike = {
+  finished?: Promise<unknown>
+  ready?: Promise<unknown>
+  skipTransition?: () => void
+}
+
+function isViewTransitionInvalidStateError(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) {
+    return false
+  }
+  const name = 'name' in error ? error.name : undefined
+  const message = 'message' in error && typeof error.message === 'string' ? error.message : ''
+  return (
+    name === 'InvalidStateError' ||
+    message.includes('Transition was aborted') ||
+    message.includes('invalid state')
+  )
+}
+
+function ignoreViewTransitionAbortError(error: unknown): void {
+  if (!isViewTransitionInvalidStateError(error)) {
+    console.warn('[dashboard] unexpected view transition rejection', error)
+  }
+}
+
 /**
  * Pop-out side of the dashboard bridge: subscribe to snapshots relayed from the
  * main window and request an initial one on mount. When a card changes column
@@ -121,11 +146,23 @@ export function useDashboardSnapshot(): DashboardSnapshot {
         setSnapshot(next)
         return
       }
-      // flushSync so the DOM reflects `next` synchronously inside the transition
-      // callback — the browser captures the "after" state from it.
-      startViewTransition(() => {
-        flushSync(() => setSnapshot(next))
-      })
+      try {
+        // flushSync so the DOM reflects `next` synchronously inside the transition
+        // callback — the browser captures the "after" state from it.
+        const transition: ViewTransitionLike | undefined = startViewTransition(() => {
+          flushSync(() => setSnapshot(next))
+        })
+        // Why: catch aborted transition rejections so rapid tab updates do not leak unhandled InvalidStateErrors (#21345).
+        void transition?.ready?.catch(ignoreViewTransitionAbortError)
+        void transition?.finished?.catch(ignoreViewTransitionAbortError)
+      } catch (error) {
+        // Why: recover gracefully if startViewTransition throws InvalidStateError synchronously.
+        if (isViewTransitionInvalidStateError(error)) {
+          setSnapshot(next)
+          return
+        }
+        throw error
+      }
     }
 
     const unsubscribe = window.api.dashboard.onSnapshot(apply)
