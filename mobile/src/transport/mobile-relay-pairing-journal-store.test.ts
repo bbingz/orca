@@ -363,9 +363,9 @@ describe('mobile relay pairing journal store', () => {
         ...offer.relay,
         inviteToken: 'zyxwvutsrqponmlkjihgfedcbaHGFEDCBA987654321'
       }
-    } satisfies PairingOffer
+    }
     const rescan = createMobileRelayPairingJournal({
-      offer: rescanOffer as PairingOffer & { relay: NonNullable<PairingOffer['relay']> },
+      offer: rescanOffer,
       hostId: 'host-2',
       hostName: 'Red Panda',
       randomBytes: (length) => new Uint8Array(length).fill(14)
