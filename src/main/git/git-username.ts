@@ -326,7 +326,15 @@ export async function resolveLocalGitUsernameDetailed(
   }
   if (await localRepoHasEffectiveGitHubRemote(repoPath)) {
     const outcome = await getGhLoginOutcome()
-    return { username: outcome.login, authoritative: !outcome.timedOut }
+    let username = outcome.login
+    if (username) {
+      // Why: prefer git config user.name casing when it matches the GitHub login to avoid ref collisions on case-insensitive filesystems.
+      const gitUserName = await readGitStdout(repoPath, ['config', '--get', 'user.name'])
+      if (gitUserName && gitUserName.toLowerCase() === username.toLowerCase()) {
+        username = gitUserName
+      }
+    }
+    return { username, authoritative: !outcome.timedOut }
   }
   return { username: '', authoritative: true }
 }

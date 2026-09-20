@@ -359,4 +359,20 @@ describe('resolveLocalGitUsername', () => {
       await expect(resolveLocalGitUsername('/repo')).resolves.toBe(active)
     }
   )
+
+  it('reconciles GitHub login casing with git config user.name when they differ only in case', async () => {
+    originRemoteUrl = 'https://github.com/stablyai/orca.git'
+    gitConfig['user.name'] = 'eurfelux'
+    ghExecFileAsyncMock.mockResolvedValueOnce({ stdout: 'EurFelux\n', stderr: '' })
+
+    await expect(resolveLocalGitUsername('/repo')).resolves.toBe('eurfelux')
+  })
+
+  it('preserves GitHub login casing when git config user.name is distinct or unset', async () => {
+    originRemoteUrl = 'https://github.com/stablyai/orca.git'
+    gitConfig['user.name'] = 'Different Name'
+    ghExecFileAsyncMock.mockResolvedValueOnce({ stdout: 'EurFelux\n', stderr: '' })
+
+    await expect(resolveLocalGitUsername('/repo')).resolves.toBe('EurFelux')
+  })
 })

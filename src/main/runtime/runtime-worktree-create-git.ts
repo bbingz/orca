@@ -5,7 +5,10 @@ import { getPRForBranch } from '../github/client'
 import type { GitAdmissionTier } from '../../shared/rpc-contract/git-admission-tier-params'
 import { gitExecFileAsync } from '../git/runner'
 import { listWorktrees } from '../git/worktree'
-import { computeValidatedBranchName } from '../ipc/worktree-logic'
+import {
+  resolveValidatedBranchNameWithGit,
+  reconcileBranchNameOverrideWithGit
+} from '../ipc/worktree-logic'
 import { getHostedReviewForBranch } from '../source-control/hosted-review'
 import {
   getSelectedReviewBranch,
@@ -23,21 +26,16 @@ export async function resolveCreateBranchName(
   username: string | null,
   gitOptions: { wslDistro?: string; admissionTier?: GitAdmissionTier } = {}
 ): Promise<string> {
+  const execGit = (args: string[]) => gitExecFileAsync(args, { cwd: repoPath, ...gitOptions })
   if (!branchNameOverride) {
-    return computeValidatedBranchName(
+    return resolveValidatedBranchNameWithGit(
       sanitizedName,
       { ...settings, branchPrefix: settings.branchPrefix as BranchPrefixStrategy },
-      username
+      username,
+      execGit
     )
   }
-  if (branchNameOverride.startsWith('-')) {
-    throw new Error('Branch name must not start with "-"')
-  }
-  await gitExecFileAsync(['check-ref-format', '--branch', branchNameOverride], {
-    cwd: repoPath,
-    ...gitOptions
-  })
-  return branchNameOverride
+  return reconcileBranchNameOverrideWithGit(branchNameOverride, execGit)
 }
 
 export async function canCheckoutExistingLocalBranch(

@@ -90,7 +90,8 @@ import {
   sanitizeWorktreeName,
   resolveWorktreeCreateDisplayNameRequest,
   resolveWorktreeCreateDisplayNameMeta,
-  computeValidatedBranchName,
+  resolveValidatedBranchNameWithGit,
+  reconcileBranchNameOverrideWithGit,
   computeWorktreePath,
   computeRemoteWorktreePath,
   computeWorkspaceRootAsync,
@@ -689,17 +690,11 @@ async function resolveCreateBranchName(
   username: string | null,
   gitOptions: { wslDistro?: string } = {}
 ): Promise<string> {
+  const execGit = (args: string[]) => gitExecFileAsync(args, { cwd: repoPath, ...gitOptions })
   if (!branchNameOverride) {
-    return computeValidatedBranchName(sanitizedName, settings, username)
+    return resolveValidatedBranchNameWithGit(sanitizedName, settings, username, execGit)
   }
-  if (branchNameOverride.startsWith('-')) {
-    throw new Error('Branch name must not start with "-"')
-  }
-  await gitExecFileAsync(['check-ref-format', '--branch', branchNameOverride], {
-    cwd: repoPath,
-    ...gitOptions
-  })
-  return branchNameOverride
+  return reconcileBranchNameOverrideWithGit(branchNameOverride, execGit)
 }
 
 async function resolveCreateBranchNameSsh(
@@ -710,14 +705,11 @@ async function resolveCreateBranchNameSsh(
   settings: BranchPrefixSettings,
   username: string | null
 ): Promise<string> {
+  const execGit = (args: string[]) => provider.exec(args, repoPath)
   if (!branchNameOverride) {
-    return computeValidatedBranchName(sanitizedName, settings, username)
+    return resolveValidatedBranchNameWithGit(sanitizedName, settings, username, execGit)
   }
-  if (branchNameOverride.startsWith('-')) {
-    throw new Error('Branch name must not start with "-"')
-  }
-  await provider.exec(['check-ref-format', '--branch', branchNameOverride], repoPath)
-  return branchNameOverride
+  return reconcileBranchNameOverrideWithGit(branchNameOverride, execGit)
 }
 
 function normalizeLocalBranchName(branchName: string | undefined): string {
