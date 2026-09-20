@@ -176,6 +176,33 @@ describe('local structured session tab projection', () => {
     expect(disabled.activeTabTypeByWorktree[WORKTREE_ID]).toBe('terminal')
   })
 
+  it('reports publication from every accepted host snapshot', () => {
+    const accepted: string[] = []
+    applyLocalStructuredSessionTabSnapshots(
+      createSnapshot(),
+      [structuredInventory('epoch-1', 2, 'codex-1')],
+      undefined,
+      undefined,
+      {
+        onAcceptedAgentSession: (_worktreeId, sessionId) => accepted.push(sessionId)
+      }
+    )
+    expect(accepted).toEqual(['codex-1'])
+
+    applyLocalStructuredSessionTabSnapshots(
+      createSnapshot(),
+      [structuredInventory('epoch-1', 3, 'codex-1')],
+      undefined,
+      undefined,
+      {
+        authoritative: true,
+        onAcceptedAgentSession: (_worktreeId, sessionId) => accepted.push(sessionId)
+      }
+    )
+
+    expect(accepted).toEqual(['codex-1', 'codex-1'])
+  })
+
   it('reconnects after a streaming subscription reports an error', async () => {
     vi.useFakeTimers()
     const priorApi = window.api
@@ -303,6 +330,43 @@ describe('local structured session tab projection', () => {
       )
     } finally {
       unsubscribe()
+      Object.defineProperty(window, 'api', { configurable: true, value: priorApi })
+    }
+  })
+
+  it('starts the session-tabs inventory without waiting for the capability refresh', async () => {
+    const priorApi = window.api
+    let releaseStatus = (): void => undefined
+    const statusGate = new Promise<void>((resolve) => {
+      releaseStatus = resolve
+    })
+    const getStatus = vi.fn(async () => {
+      await statusGate
+      return { capabilities: [STRUCTURED_AGENT_SESSION_RUNTIME_CAPABILITY] }
+    })
+    const call = vi.fn().mockResolvedValue({ ok: true, result: { snapshots: [] } })
+    Object.defineProperty(window, 'api', {
+      configurable: true,
+      value: { runtime: { getStatus, call } }
+    })
+    try {
+      vi.resetModules()
+      const { restoreLocalStructuredSessionTabsOnce } =
+        await import('./local-structured-session-tabs-sync')
+      let settled = false
+      const restored = restoreLocalStructuredSessionTabsOnce().finally(() => {
+        settled = true
+      })
+      expect(getStatus).toHaveBeenCalledOnce()
+      // The inventory RPC must already be in flight while the capability refresh is pending.
+      expect(call).toHaveBeenCalledWith({ method: 'session.tabs.listAll', params: {} })
+      // ...and overlapping must not let the restore open the gate before capabilities land.
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      expect(settled).toBe(false)
+      releaseStatus()
+      await restored
+      expect(call).toHaveBeenCalledOnce()
+    } finally {
       Object.defineProperty(window, 'api', { configurable: true, value: priorApi })
     }
   })
