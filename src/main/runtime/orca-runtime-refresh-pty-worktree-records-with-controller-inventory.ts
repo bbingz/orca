@@ -55,7 +55,10 @@ export class OrcaRuntimeWithRefreshPtyWorktreeRecordsWithControllerInventory ext
     }
     const inventoryGeneration = this.ptyControllerInventorySequence + 1
     this.ptyControllerInventorySequence = inventoryGeneration
-    const providerKey = typeof connectionId === 'string' ? `ssh:${connectionId}` : 'local'
+    const providerKey =
+      typeof connectionId === 'string'
+        ? toSshExecutionHostId(connectionId)
+        : LOCAL_EXECUTION_HOST_ID
     const livenessObservationAtStart = this.ptyLivenessObservationSequence
     if (connectionId === undefined) {
       this.ptyControllerAggregateInventoryGeneration = inventoryGeneration
@@ -150,8 +153,9 @@ export class OrcaRuntimeWithRefreshPtyWorktreeRecordsWithControllerInventory ext
     const allLivePtyIds = new Set(sessions.map((session) => session.id))
     const selectedLivePtyIds = new Set<string>()
     for (const session of sessions) {
-      // The owning inventory positively observed this PTY again; prior lost-contact doubt is stale.
-      this.forgetPtyLivenessVerdict(session.id, livenessObservationAtStart)
+      // The owning inventory positively observed this PTY again, so this is host evidence of life,
+      // not merely the absence of doubt.
+      this.markPtyLivenessLive(session.id, livenessObservationAtStart)
       const sessionConnectionId =
         parseAppSshPtyId(session.id)?.connectionId ??
         (typeof connectionId === 'string' ? connectionId : null)
@@ -282,7 +286,7 @@ export class OrcaRuntimeWithRefreshPtyWorktreeRecordsWithControllerInventory ext
           }
           pty.connected = true
           pty.disconnectedAt = null
-          this.forgetPtyLivenessVerdict(pty.ptyId)
+          this.markPtyLivenessLive(pty.ptyId, livenessObservationAtStart)
           continue
         }
         pty.connected = false
