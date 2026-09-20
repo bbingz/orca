@@ -108,6 +108,7 @@ function registerAppSchemeGuest(input: {
     }
     return null
   })
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Test harness passes mocked WebContents subset to attachGuestPolicies.
   browserManager.attachGuestPolicies(guest as never)
   browserManager.registerGuest({
     browserPageId: input.browserPageId,
@@ -115,6 +116,32 @@ function registerAppSchemeGuest(input: {
     rendererWebContentsId
   })
   return { guest }
+}
+
+function getLastWindowOpenHandler(): (details: { url: string; frameName?: string }) => {
+  action: 'allow' | 'deny'
+  createWindow?: unknown
+} {
+  const lastCall = guestSetWindowOpenHandlerMock.mock.calls.at(-1)
+  const fn = lastCall?.[0]
+  if (typeof fn !== 'function') {
+    throw new Error('Expected window open handler')
+  }
+  return (details) => {
+    const res: unknown = fn(details)
+    const action =
+      res && typeof res === 'object' && 'action' in res && res.action === 'allow' ? 'allow' : 'deny'
+    const createWindow =
+      res && typeof res === 'object' && 'createWindow' in res ? res.createWindow : undefined
+    return { action, createWindow }
+  }
+}
+
+function getGuestEventHandler(
+  event: string
+): ((...args: unknown[]) => unknown) | undefined {
+  const handler = guestOnMock.mock.calls.find(([e]) => e === event)?.[1]
+  return typeof handler === 'function' ? handler : undefined
 }
 
 describe('browserManager custom app schemes', () => {
@@ -204,9 +231,7 @@ describe('browserManager custom app schemes', () => {
       rendererSend: rendererSendMock
     })
 
-    const handler = guestSetWindowOpenHandlerMock.mock.calls.at(-1)?.[0] as (details: {
-      url: string
-    }) => { action: 'allow' | 'deny' }
+    const handler = getLastWindowOpenHandler()
     expect(handler({ url: 'oktaverify://bind?token=1' })).toEqual({ action: 'deny' })
     await vi.waitFor(() => {
       expect(openExternalAppUrlWithUserApprovalMock).toHaveBeenCalledWith(
@@ -225,7 +250,7 @@ describe('browserManager custom app schemes', () => {
     openExternalAppUrlWithUserApprovalMock.mockResolvedValue('cancelled')
     const willNavigateHandler = guestOnMock.mock.calls.find(
       ([event]) => event === 'will-navigate'
-    )?.[1] as ((event: { preventDefault: () => void }, url: string) => void) | undefined
+    )?.[1]
     const preventDefault = vi.fn()
     willNavigateHandler?.({ preventDefault }, 'oktaverify://bind?token=2')
     expect(preventDefault).toHaveBeenCalled()
@@ -252,22 +277,18 @@ describe('browserManager custom app schemes', () => {
       rendererSend: rendererSendMock
     })
 
-    const domReadyHandler = guestOnMock.mock.calls.find(([event]) => event === 'dom-ready')?.[1] as
-      | (() => void)
-      | undefined
+    const domReadyHandler = guestOnMock.mock.calls.find(([event]) => event === 'dom-ready')?.[1]
     domReadyHandler?.()
     await vi.waitFor(() => expect(executeJavaScriptInIsolatedWorldMock).toHaveBeenCalledTimes(1))
 
-    const script = executeJavaScriptInIsolatedWorldMock.mock.calls[0][1][0].code as string
+    const firstCall = executeJavaScriptInIsolatedWorldMock.mock.calls[0]
+    const script = typeof firstCall?.[1]?.[0]?.code === 'string' ? firstCall[1][0].code : ''
     const clickedLinkFrameName = script.match(/__orca_clicked_link_foreground_[0-9a-f-]+/)?.[0]
     if (!clickedLinkFrameName) {
       throw new Error('Expected a private clicked-link frame name')
     }
 
-    const handler = guestSetWindowOpenHandlerMock.mock.calls.at(-1)?.[0] as (details: {
-      url: string
-      frameName: string
-    }) => { action: 'allow' | 'deny' }
+    const handler = getLastWindowOpenHandler()
     expect(
       handler({
         url: 'oktaverify://bind?from=clicked-link',
@@ -299,9 +320,7 @@ describe('browserManager custom app schemes', () => {
       browserPageId: 'browser-app-scheme-http-file',
       rendererSend: rendererSendMock
     })
-    const willNavigateHandler = guestOnMock.mock.calls.find(
-      ([event]) => event === 'will-navigate'
-    )?.[1] as ((event: { preventDefault: () => void }, url: string) => void) | undefined
+    const willNavigateHandler = getGuestEventHandler('will-navigate')
     const httpPreventDefault = vi.fn()
     willNavigateHandler?.({ preventDefault: httpPreventDefault }, 'https://example.com/next')
     expect(httpPreventDefault).not.toHaveBeenCalled()
@@ -338,9 +357,7 @@ describe('browserManager custom app schemes', () => {
       browserPageId: 'browser-app-scheme-inflight',
       rendererSend: rendererSendMock
     })
-    const handler = guestSetWindowOpenHandlerMock.mock.calls.at(-1)?.[0] as (details: {
-      url: string
-    }) => { action: 'allow' | 'deny' }
+    const handler = getLastWindowOpenHandler()
     expect(handler({ url: 'oktaverify://one' })).toEqual({ action: 'deny' })
     await vi.waitFor(() => {
       expect(openExternalAppUrlWithUserApprovalMock).toHaveBeenCalledTimes(1)
@@ -371,9 +388,7 @@ describe('browserManager custom app schemes', () => {
       browserPageId: 'browser-app-scheme-denied-popup',
       rendererSend: rendererSendMock
     })
-    const handler = guestSetWindowOpenHandlerMock.mock.calls.at(-1)?.[0] as (details: {
-      url: string
-    }) => { action: 'allow' | 'deny'; createWindow?: unknown }
+    const handler = getLastWindowOpenHandler()
     expect(handler({ url: 'javascript:alert(1)' })).toEqual({ action: 'deny' })
     expect(handler({ url: 'file:///etc/passwd' })).toEqual({ action: 'deny' })
     const custom = handler({ url: 'oktaverify://bind' })
@@ -404,25 +419,24 @@ describe('browserManager custom app schemes', () => {
       executeJavaScriptInIsolatedWorld: vi.fn().mockResolvedValue(undefined),
       rendererSend: rendererSendMock
     })
-    const frameCreatedHandler = guestOnMock.mock.calls.find(
-      ([event]) => event === 'frame-created'
-    )?.[1] as ((event: Electron.Event, details: Electron.FrameCreatedDetails) => void) | undefined
-    frameCreatedHandler?.({} as Electron.Event, { frame } as never)
+    const frameCreatedHandler = getGuestEventHandler('frame-created')
+    frameCreatedHandler?.({ defaultPrevented: false, preventDefault: () => {} }, { frame })
     const frameDomReadyHandler = frameOnceMock.mock.calls.find(
       ([event]) => event === 'dom-ready'
-    )?.[1] as (() => void) | undefined
-    frameDomReadyHandler?.()
+    )?.[1]
+    if (typeof frameDomReadyHandler === 'function') {
+      frameDomReadyHandler()
+    }
     await vi.waitFor(() => expect(executeJavaScriptMock).toHaveBeenCalledTimes(1))
-    const iframeFrameName = (executeJavaScriptMock.mock.calls[0][0] as string).match(
+    const rawCall = executeJavaScriptMock.mock.calls[0]?.[0]
+    const script = typeof rawCall === 'string' ? rawCall : ''
+    const iframeFrameName = script.match(
       /__orca_clicked_link_iframe_foreground_[0-9a-f-]+/
     )?.[0]
     if (!iframeFrameName) {
       throw new Error('Expected a private iframe clicked-link frame name')
     }
-    const handler = guestSetWindowOpenHandlerMock.mock.calls.at(-1)?.[0] as (details: {
-      url: string
-      frameName: string
-    }) => { action: 'allow' | 'deny' }
+    const handler = getLastWindowOpenHandler()
     expect(
       handler({
         url: 'oktaverify://bind?from=iframe-click',
