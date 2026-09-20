@@ -41,31 +41,32 @@ describe('shared agent-hook-listener', () => {
     expect(event!.payload.agentType).toBe('claude')
   })
 
-  it('normalizes a BOM-prefixed Cursor hook payload to a working state', () => {
-    const event = normalizeHookPayload(
-      state,
-      'cursor',
-      {
-        paneKey: PANE_KEY,
-        payload: '\uFEFF{"hook_event_name":"beforeSubmitPrompt","prompt":"Synthetic Cursor prompt"}'
-      },
-      'production'
-    )
+  it('normalizes single and multiple BOM-prefixed Cursor hook payloads to a working state (#21421)', () => {
+    for (const prefix of ['\uFEFF', '\uFEFF\uFEFF', '\uFEFF\uFEFF\uFEFF']) {
+      const event = normalizeHookPayload(
+        state,
+        'cursor',
+        {
+          paneKey: PANE_KEY,
+          payload: `${prefix}{"hook_event_name":"beforeSubmitPrompt","prompt":"Synthetic Cursor prompt"}`
+        },
+        'production'
+      )
 
-    expect(event?.payload).toMatchObject({
-      agentType: 'cursor',
-      state: 'working',
-      prompt: 'Synthetic Cursor prompt'
-    })
-    expect(event?.hookEventName).toBe('beforeSubmitPrompt')
+      expect(event?.payload).toMatchObject({
+        agentType: 'cursor',
+        state: 'working',
+        prompt: 'Synthetic Cursor prompt'
+      })
+      expect(event?.hookEventName).toBe('beforeSubmitPrompt')
+    }
   })
 
-  // Why: pins the allowance to exactly one leading U+FEFF, so nobody widens it into a trim.
-  it('still rejects a hook payload that is malformed once the BOM is removed', () => {
+  // Why: pins allowance to leading U+FEFF characters, keeping mid-stream BOMs or whitespace invalid.
+  it('still rejects a hook payload that is malformed once leading BOMs are removed', () => {
     const bom = '\uFEFF'
     const body = '{"hook_event_name":"beforeSubmitPrompt"}'
     for (const payload of [
-      `${bom}${bom}${body}`,
       `${bom}not json`,
       ` ${bom}${body}`,
       `{"hook_event_name"${bom}:"beforeSubmitPrompt"}`
