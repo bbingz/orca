@@ -21,6 +21,11 @@ import type * as osModule from 'node:os'
 let isolatedUserDataDir = ''
 let previousUserDataPath: string | undefined
 
+function parseJsonFile<T>(filePath: string): T {
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Test fixture JSON deserialization with known test schema.
+  return JSON.parse(readFileSync(filePath, 'utf8')) as T
+}
+
 beforeEach(() => {
   previousUserDataPath = process.env.ORCA_USER_DATA_PATH
   isolatedUserDataDir = mkdtempSync(join(tmpdir(), 'orca-hook-refresh-user-data-'))
@@ -253,11 +258,11 @@ describe('managed hook settings refresh (#17202)', () => {
 
       await new ClaudeHookService().refreshManagedScripts()
 
-      const parsed = JSON.parse(readFileSync(settingsPath, 'utf8')) as {
+      const parsed = parseJsonFile<{
         env?: { AWS_REGION?: string }
         hooks?: Record<string, { hooks: { command: string }[] }[]>
         statusLine?: unknown
-      }
+      }>(settingsPath)
       const expected = getManagedLifecycleHook(
         getManagedScriptPath(CLAUDE_HOOK_SETTINGS),
         CLAUDE_HOOK_SETTINGS
@@ -311,9 +316,9 @@ describe('managed hook settings refresh (#17202)', () => {
 
       await new ClaudeHookService().refreshManagedScripts()
 
-      const parsed = JSON.parse(readFileSync(settingsPath, 'utf8')) as {
+      const parsed = parseJsonFile<{
         statusLine?: { type: string; command: string; extra?: boolean }
-      }
+      }>(settingsPath)
       expect(parsed.statusLine?.command).toBe(getManagedCommand(getStatusLineScriptPath()))
       expect(parsed.statusLine?.extra).toBe(true)
       if (process.platform !== 'win32') {
@@ -359,9 +364,9 @@ describe('managed hook settings refresh (#17202)', () => {
 
       await makeOpenClaudeService().refreshManagedScripts()
 
-      const parsed = JSON.parse(readFileSync(settingsPath, 'utf8')) as {
+      const parsed = parseJsonFile<{
         hooks?: Record<string, { hooks: { command: string }[] }[]>
-      }
+      }>(settingsPath)
       const expected = getManagedLifecycleHook(
         getManagedScriptPath(OPENCLAUDE_HOOK_SETTINGS),
         OPENCLAUDE_HOOK_SETTINGS
@@ -446,10 +451,10 @@ describe('managed hook settings refresh (#17202)', () => {
 
       await expect(new ClaudeHookService().refreshManagedScripts()).resolves.toBeUndefined()
 
-      const parsed = JSON.parse(readFileSync(settingsPath, 'utf8')) as {
+      const parsed = parseJsonFile<{
         env?: { AWS_REGION?: string }
         hooks?: Record<string, unknown[]>
-      }
+      }>(settingsPath)
       const expected = getManagedLifecycleHook(
         getManagedScriptPath(CLAUDE_HOOK_SETTINGS),
         CLAUDE_HOOK_SETTINGS
