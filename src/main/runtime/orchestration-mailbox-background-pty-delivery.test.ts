@@ -35,6 +35,7 @@ async function createIdleBackgroundAgent(opts?: { ptyId?: string }) {
     leafId: LEAF_ID,
     terminalHandle: handle
   })
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Test harness accesses internal runtime properties to issue PTY handle.
   const internals = runtime as unknown as RuntimeInternals
   internals.issuePtyHandle(internals.ptysById.get(ptyId)!)
   runtime.attachWindow(1)
