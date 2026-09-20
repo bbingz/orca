@@ -8,12 +8,18 @@ import type { Repo } from '../shared/repo-types'
 import type { Store } from './persistence'
 import type * as WorkspaceSpaceScanBudgetModule from '../shared/workspace-space-scan-budget'
 
-const { budgetState, execFileMock, spawnMock, listRepoWorktreesMock } = vi.hoisted(() => ({
-  budgetState: { created: 0, duMaxEntries: null as number | null },
-  execFileMock: vi.fn(),
-  spawnMock: vi.fn(),
-  listRepoWorktreesMock: vi.fn()
-}))
+const { budgetState, execFileMock, spawnMock, listRepoWorktreesMock } = vi.hoisted(() => {
+  const budgetState: { created: number; duMaxEntries: number | null } = {
+    created: 0,
+    duMaxEntries: null
+  }
+  return {
+    budgetState,
+    execFileMock: vi.fn(),
+    spawnMock: vi.fn(),
+    listRepoWorktreesMock: vi.fn()
+  }
+})
 
 vi.mock('node:child_process', () => ({
   execFile: execFileMock,
@@ -111,15 +117,10 @@ describe('analyzeWorkspaceSpace local du timeout', () => {
   }
 
   function createSpawnedDu() {
-    const child = new EventEmitter() as EventEmitter & {
-      stdout: EventEmitter
-      stderr: EventEmitter
-      kill: ReturnType<typeof vi.fn>
-    }
-    child.stdout = new EventEmitter()
-    child.stderr = new EventEmitter()
-    child.kill = vi.fn()
-    return child
+    const stdout = new EventEmitter()
+    const stderr = new EventEmitter()
+    const kill = vi.fn()
+    return Object.assign(new EventEmitter(), { stdout, stderr, kill })
   }
 
   it('streams native du output instead of using execFile buffering', async () => {

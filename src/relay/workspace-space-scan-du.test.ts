@@ -26,15 +26,10 @@ function createContext(signal?: AbortSignal): RequestContext {
 }
 
 function createSpawnedDu() {
-  const child = new EventEmitter() as EventEmitter & {
-    stdout: EventEmitter
-    stderr: EventEmitter
-    kill: ReturnType<typeof vi.fn>
-  }
-  child.stdout = new EventEmitter()
-  child.stderr = new EventEmitter()
-  child.kill = vi.fn()
-  return child
+  const stdout = new EventEmitter()
+  const stderr = new EventEmitter()
+  const kill = vi.fn()
+  return Object.assign(new EventEmitter(), { stdout, stderr, kill })
 }
 
 describe('relay workspace space scan du handling', () => {

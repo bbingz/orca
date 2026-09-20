@@ -7,14 +7,21 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type * as WorkspaceSpaceScanBudgetModule from '../shared/workspace-space-scan-budget'
 import type { RequestContext } from './dispatcher'
 
-const { budgetState, spawnMock } = vi.hoisted(() => ({
-  budgetState: {
+const { budgetState, spawnMock } = vi.hoisted(() => {
+  const budgetState: {
+    created: number
+    duMaxEntries: number | null
+    listingMaxEntries: number | null
+  } = {
     created: 0,
-    duMaxEntries: null as number | null,
-    listingMaxEntries: null as number | null
-  },
-  spawnMock: vi.fn()
-}))
+    duMaxEntries: null,
+    listingMaxEntries: null
+  }
+  return {
+    budgetState,
+    spawnMock: vi.fn()
+  }
+})
 
 vi.mock('node:child_process', () => ({ spawn: spawnMock }))
 
@@ -51,15 +58,10 @@ const context: RequestContext = {
 }
 
 function createSpawnedDu() {
-  const child = new EventEmitter() as EventEmitter & {
-    stdout: EventEmitter
-    stderr: EventEmitter
-    kill: ReturnType<typeof vi.fn>
-  }
-  child.stdout = new EventEmitter()
-  child.stderr = new EventEmitter()
-  child.kill = vi.fn()
-  return child
+  const stdout = new EventEmitter()
+  const stderr = new EventEmitter()
+  const kill = vi.fn()
+  return Object.assign(new EventEmitter(), { stdout, stderr, kill })
 }
 
 describe('relay workspace space scan du path', () => {
