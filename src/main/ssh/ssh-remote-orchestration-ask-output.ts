@@ -17,7 +17,7 @@ export function formatRemoteOrchestrationAsk(
   }
   if (json) {
     // Why: match local `orca orchestration ask --json` so SSH remote engines get outcome/pending.
-    const askResult = withOrchestrationAskOutcome(response.result as OrchestrationAskResultShape)
+    const askResult = withOrchestrationAskOutcome(toAskResultShape(response.result))
     return { stdout: `${JSON.stringify(askResult)}\n`, stderr: '' }
   }
   if (isRecord(response.result.legacyCompatibility)) {
@@ -69,4 +69,20 @@ export function getRemoteCliExitCode(command: string, response: RpcResponse): nu
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}
+
+function toAskResultShape(
+  result: Record<string, unknown>
+): OrchestrationAskResultShape & Record<string, unknown> {
+  const legacyCompatibility = isRecord(result.legacyCompatibility)
+    ? { resumeRequired: result.legacyCompatibility.resumeRequired === true }
+    : null
+  return {
+    ...result,
+    answer: typeof result.answer === 'string' ? result.answer : null,
+    timedOut: result.timedOut === true,
+    cancelled: typeof result.cancelled === 'boolean' ? result.cancelled : undefined,
+    connectionLost: typeof result.connectionLost === 'boolean' ? result.connectionLost : undefined,
+    legacyCompatibility
+  }
 }

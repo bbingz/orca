@@ -19,13 +19,11 @@ describe('formatRemoteOrchestrationAsk', () => {
       },
       true
     )
-    const payload = JSON.parse(formatted.stdout) as {
-      outcome: string
-      pending: boolean
-      timedOut: boolean
-    }
-    expect(payload.outcome).toBe('timed_out_pending')
-    expect(payload.pending).toBe(true)
-    expect(payload.timedOut).toBe(true)
+    const payload = JSON.parse(formatted.stdout)
+    expect(payload).toMatchObject({
+      outcome: 'timed_out_pending',
+      pending: true,
+      timedOut: true
+    })
   })
 })
