@@ -25,7 +25,7 @@ type Props = {
   onRecheck: () => void | Promise<unknown>
 }
 
-export function AgentSkillSetupPanelActions({
+export function SkillSetupPanelActions({
   installed,
   loading,
   installDisabled,

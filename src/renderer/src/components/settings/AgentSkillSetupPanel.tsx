@@ -6,7 +6,7 @@ import { SkillFreshnessStatusPill } from '../skills/SkillFreshnessStatusPill'
 import { OnboardingInlineCommandTerminal } from '../onboarding/OnboardingInlineCommandTerminal'
 import { AgentSkillSetupFailureNotice } from './AgentSkillSetupFailureNotice'
 import { createTerminalSnapshot, type SkillTerminalSnapshot } from './agent-skill-terminal-snapshot'
-import { AgentSkillSetupPanelActions } from './agent-skill-setup-panel-actions'
+import { SkillSetupPanelActions } from './agent-skill-setup-panel-actions'
 import type { AgentSkillSetupPanelProps } from './agent-skill-setup-panel-props'
 import { Button } from '../ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip'
@@ -205,7 +205,7 @@ export function AgentSkillSetupPanel({
   }
 
   const actionRow = (
-    <AgentSkillSetupPanelActions
+    <SkillSetupPanelActions
       installed={installed}
       loading={loading}
       installDisabled={installDisabled}

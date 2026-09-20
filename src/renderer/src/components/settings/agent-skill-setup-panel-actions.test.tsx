@@ -4,7 +4,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { AgentSkillSetupPanelActions } from './agent-skill-setup-panel-actions'
+import { SkillSetupPanelActions } from './agent-skill-setup-panel-actions'
 
 const REMOVE_COMMAND = 'npx skills remove computer-use --global'
 
@@ -19,7 +19,7 @@ describe('AgentSkillSetupPanelActions remove affordance (#13099)', () => {
   it('shows Remove only when installed with a removeCommand', () => {
     const open = vi.fn()
     const without = renderToStaticMarkup(
-      <AgentSkillSetupPanelActions
+      <SkillSetupPanelActions
         installed
         loading={false}
         installDisabled={false}
@@ -39,7 +39,7 @@ describe('AgentSkillSetupPanelActions remove affordance (#13099)', () => {
     expect(labels(without)).not.toContain('Remove')
 
     const withRemove = renderToStaticMarkup(
-      <AgentSkillSetupPanelActions
+      <SkillSetupPanelActions
         installed
         loading={false}
         installDisabled={false}
@@ -65,7 +65,7 @@ describe('AgentSkillSetupPanelActions remove affordance (#13099)', () => {
     const open = vi.fn()
     const user = userEvent.setup()
     render(
-      <AgentSkillSetupPanelActions
+      <SkillSetupPanelActions
         installed
         loading={false}
         installDisabled={false}
