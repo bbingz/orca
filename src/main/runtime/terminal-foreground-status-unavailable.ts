@@ -12,6 +12,7 @@ export function isTerminalForegroundInspectionUnavailable(inspection: unknown): 
   return (
     typeof inspection === 'object' &&
     inspection !== null &&
-    (inspection as { unavailable?: unknown }).unavailable === true
+    'unavailable' in inspection &&
+    inspection.unavailable === true
   )
 }
