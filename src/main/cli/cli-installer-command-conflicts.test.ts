@@ -1,7 +1,9 @@
+import type NodeChildProcess from 'node:child_process'
 import { mkdir, readFile, readlink, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { runProcess } from '../../shared/child-process/run-process'
 
 const execFileMock = vi.hoisted(() => vi.fn())
 
@@ -13,9 +15,13 @@ vi.mock('electron', () => ({
   }
 }))
 
-vi.mock('node:child_process', () => ({
-  execFile: execFileMock
-}))
+vi.mock('node:child_process', async (importOriginal) => {
+  const actual = await importOriginal<typeof NodeChildProcess>()
+  return {
+    ...actual,
+    execFile: execFileMock
+  }
+})
 
 import { CliInstaller } from './cli-installer'
 import { createPackagedMacLauncher, makeFixture } from './cli-installer-test-fixtures'
@@ -208,6 +214,70 @@ describe('CliInstaller', () => {
         await expect(installer.install()).resolves.toMatchObject({ state: 'installed' })
         await expect(readlink(installPath)).resolves.toBe(launcherPath)
       }
+    }
+  )
+
+  it.skipIf(process.platform !== 'darwin')(
+    'reports stale status for an unreadable symlink and allows self-healing',
+    async () => {
+      const fixture = await makeFixture()
+      const commandDir = join(fixture.root, 'bin')
+      const installPath = join(commandDir, 'orca')
+      const resourcesPath = join(fixture.root, 'Current.app', 'Contents', 'Resources')
+      const launcherPath = join(resourcesPath, 'bin', 'orca')
+      const staleTarget = join(fixture.root, 'Old.app', 'Contents', 'Resources', 'bin', 'orca')
+      await mkdir(commandDir, { recursive: true })
+      await mkdir(join(resourcesPath, 'bin'), { recursive: true })
+      await writeFile(launcherPath, '#!/usr/bin/env bash\n', 'utf8')
+      await symlink(staleTarget, installPath)
+      // Why: macOS Darwin uses lchmod to set symlink permissions; 0000 produces EACCES on readlink.
+      await runProcess({ program: '/bin/chmod', args: ['-h', '0000', installPath] })
+
+      const installer = new CliInstaller({
+        platform: 'darwin',
+        isPackaged: true,
+        userDataPath: fixture.userDataPath,
+        resourcesPath,
+        commandPathOverride: installPath,
+        processPathEnv: commandDir
+      })
+
+      const status = await installer.getStatus()
+      expect(status.state).toBe('stale')
+      expect(status.currentTarget).toBeNull()
+      expect(status.detail).toContain('cannot be read')
+
+      await expect(installer.install()).resolves.toMatchObject({ state: 'installed' })
+      await expect(readlink(installPath)).resolves.toBe(launcherPath)
+    }
+  )
+
+  it.skipIf(process.platform !== 'darwin')(
+    'reports conflict status for an unreadable regular file',
+    async () => {
+      const fixture = await makeFixture()
+      const commandDir = join(fixture.root, 'bin')
+      const installPath = join(commandDir, 'orca')
+      const resourcesPath = join(fixture.root, 'Current.app', 'Contents', 'Resources')
+      const launcherPath = join(resourcesPath, 'bin', 'orca')
+      await mkdir(commandDir, { recursive: true })
+      await mkdir(join(resourcesPath, 'bin'), { recursive: true })
+      await writeFile(launcherPath, '#!/usr/bin/env bash\n', 'utf8')
+      await writeFile(installPath, 'unreadable file content', { mode: 0o000 })
+
+      const installer = new CliInstaller({
+        platform: 'darwin',
+        isPackaged: true,
+        userDataPath: fixture.userDataPath,
+        resourcesPath,
+        commandPathOverride: installPath,
+        processPathEnv: commandDir
+      })
+
+      const status = await installer.getStatus()
+      expect(status.state).toBe('conflict')
+      expect(status.currentTarget).toBeNull()
+      expect(status.detail).toContain('cannot be read')
     }
   )
 })

@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { lstat, mkdir, readFile, readlink, rename, rmdir } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import type { CliInstallStatus } from '../../shared/cli-install-types'
-import { isMissingError } from './cli-install-errors'
+import { isMissingError, isPermissionError } from './cli-install-errors'
 import { quoteShell } from './cli-install-path-format'
 
 export type EntryIdentity = {
@@ -96,8 +96,13 @@ export async function inspectStableCommand(
       } else if (afterInspection && status.state !== 'conflict') {
         fileSha256 = await hashCommandFile(commandPath)
       }
-    } catch {
-      continue
+    } catch (error) {
+      // Why: an unreadable symlink target falls back to CAS dev:ino matching instead of retrying.
+      if (afterInspection?.isSymbolicLink && isPermissionError(error)) {
+        rawSymlinkTarget = null
+      } else {
+        continue
+      }
     }
     const afterEvidence = await readEntrySnapshot(commandPath)
     if (hasSameSnapshot(afterInspection, afterEvidence)) {
@@ -201,6 +206,7 @@ export function buildMacPrivilegedSymlinkTransaction(
   return (
     `${capture}if /bin/mkdir ${quoteShell(publishDirectory)} && ` +
     `/bin/ln -s ${quoteShell(args.launcherPath)} ${quoteShell(publishPath)} && ` +
+    `/bin/chmod -h 755 ${quoteShell(publishPath)} && ` +
     `/bin/ln -P ${quoteShell(publishPath)} ${quoteShell(commandDirectory)}; then ` +
     `/bin/rm ${quoteShell(publishPath)}; /bin/rmdir ${quoteShell(publishDirectory)}; ` +
     `if [ "$captured" -eq 1 ]; then /bin/rm ${quoteShell(heldPath)}; fi; ` +

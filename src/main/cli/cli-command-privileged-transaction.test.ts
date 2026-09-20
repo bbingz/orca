@@ -93,11 +93,14 @@ describe.skipIf(process.platform !== 'darwin' || process.getuid?.() === 0)(
       const installed = await installer.install()
       expect(installed.state).toBe('installed')
       await expect(readlink(fixture.commandPath)).resolves.toBe(installed.launcherPath)
+      const installedStats = await lstat(fixture.commandPath)
+      expect(Number(installedStats.mode & 0o777)).toBe(0o755)
 
       await chmod(fixture.protectedDirectory, 0o500)
       await expect(installer.remove()).resolves.toMatchObject({ state: 'not_installed' })
       expect(commands).toHaveLength(2)
       expect(commands.every((command) => command.includes('/bin/ln -P'))).toBe(true)
+      expect(commands.some((command) => command.includes('/bin/chmod -h 755'))).toBe(true)
       expect(commands.every((command) => !command.includes('mv -f'))).toBe(true)
     })
 
@@ -184,6 +187,30 @@ describe.skipIf(process.platform !== 'darwin' || process.getuid?.() === 0)(
       expect(
         (await readdir(fixture.protectedDirectory)).some((name) => name.startsWith('.orca-cli-'))
       ).toBe(false)
+    })
+
+    it('replaces an existing unreadable symlink via privileged transaction', async () => {
+      const fixture = await createPrivilegedFixture()
+      const staleTarget = join(fixture.userDataPath, 'cli', 'bin', 'old', 'orca')
+      await symlink(staleTarget, fixture.commandPath)
+      // Why: macOS Darwin uses lchmod to set symlink permissions; 0000 produces EACCES on readlink.
+      await runProcess({ program: '/bin/chmod', args: ['-h', '0000', fixture.commandPath] })
+      await expect(readlink(fixture.commandPath)).rejects.toThrow()
+
+      const installer = new CliInstaller({
+        ...fixtureInstallerOptions(fixture),
+        privilegedRunner: async (command) => {
+          await chmod(fixture.protectedDirectory, 0o700)
+          await executePrivilegedShell(command)
+        }
+      })
+
+      await chmod(fixture.protectedDirectory, 0o500)
+      const installed = await installer.install()
+      expect(installed.state).toBe('installed')
+      await expect(readlink(fixture.commandPath)).resolves.toBe(installed.launcherPath)
+      const stats = await lstat(fixture.commandPath)
+      expect(Number(stats.mode & 0o777)).toBe(0o755)
     })
   }
 )

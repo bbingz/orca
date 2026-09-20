@@ -5,7 +5,7 @@ import type { CliInstallMethod, CliInstallStatus } from '../../shared/cli-instal
 import { isAppImageExtractedLauncherPath } from './appimage-extracted-root'
 import { DEV_COMMAND_NAME, DEV_LAUNCHER_DIR } from './cli-install-constants'
 import { buildWindowsForwarder, extractManagedUnixLauncherTarget } from './cli-dev-launcher'
-import { isMissingError } from './cli-install-errors'
+import { isMissingError, isPermissionError } from './cli-install-errors'
 import { CliInstallLocation } from './cli-install-location'
 import { isPathInsideOrEqual, samePathEntry } from './cli-install-path-format'
 import { extractLegacyAppImageCliWrapperTarget } from './legacy-appimage-cli-wrapper'
@@ -20,9 +20,11 @@ export class CliCommandInspection extends CliInstallLocation {
     commandPath: string,
     launcherPath: string
   ): Promise<CliInstallStatus> {
+    let isSymlink = false
     try {
       const stats = await lstat(commandPath)
-      if (!stats.isSymbolicLink()) {
+      isSymlink = stats.isSymbolicLink()
+      if (!isSymlink) {
         if (stats.isFile()) {
           const currentContent = await readFile(commandPath, 'utf8')
           const managedTarget =
@@ -83,6 +85,20 @@ export class CliCommandInspection extends CliInstallLocation {
           state: 'not_installed',
           currentTarget: null,
           detail: `Register ${commandPath} to use Orca from the terminal.`
+        })
+      }
+      // Why: unreadable symlink (e.g. 0700 root symlink on Darwin) reports stale so it can be repaired without crashing Settings.
+      if (isPermissionError(error)) {
+        return this.buildStatus({
+          commandPath,
+          launcherPath,
+          installMethod: 'symlink',
+          supported: true,
+          state: isSymlink ? 'stale' : 'conflict',
+          currentTarget: null,
+          detail: isSymlink
+            ? `${commandPath} exists but cannot be read. Registering will repair its permissions.`
+            : `${commandPath} exists but cannot be read.`
         })
       }
       throw error
