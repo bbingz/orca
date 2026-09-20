@@ -4,6 +4,11 @@ import { TERMINAL_HANDLERS } from './terminal'
 
 const CREATE_FLAGS = new Map<string, string | boolean>([['worktree', 'path:/tmp/worktree']])
 
+function makeMockRuntimeClient(call: ReturnType<typeof vi.fn>): RuntimeClient {
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Test mock fulfills runtime call interface for terminal create.
+  return { call, isRemote: false } as unknown as RuntimeClient
+}
+
 describe('terminal create CLI contract', () => {
   afterEach(() => {
     vi.restoreAllMocks()
@@ -30,7 +35,7 @@ describe('terminal create CLI contract', () => {
     await expect(
       TERMINAL_HANDLERS['terminal create']({
         flags: CREATE_FLAGS,
-        client: { call, isRemote: false } as unknown as RuntimeClient,
+        client: makeMockRuntimeClient(call),
         cwd: '/tmp/worktree',
         json: true
       })
@@ -56,7 +61,7 @@ describe('terminal create CLI contract', () => {
 
     await TERMINAL_HANDLERS['terminal create']({
       flags: CREATE_FLAGS,
-      client: { call, isRemote: false } as unknown as RuntimeClient,
+      client: makeMockRuntimeClient(call),
       cwd: '/tmp/worktree',
       json: true
     })
