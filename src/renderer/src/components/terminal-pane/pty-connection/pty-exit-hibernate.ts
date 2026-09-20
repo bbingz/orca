@@ -222,6 +222,8 @@ export function installPtyExitHibernate(session: ConnectPanePtySession): void {
     const isSuppressedExit = session.deps.consumeSuppressedPtyExit(ptyId) || preserveRendererBinding
     if (!isSuppressedExit && !isUnverifiedExit) {
       session.clearExitedPanePtyLayoutBinding(ptyId)
+      // Why: cleanly exited terminal has no surviving agent session to auto-resume on relaunch.
+      useAppStore.getState().clearSleepingAgentSession(session.cacheKey)
     }
     session.deps.clearRuntimePaneTitle(session.deps.tabId, session.pane.id)
     if (!preserveRendererBinding && !isUnverifiedExit) {

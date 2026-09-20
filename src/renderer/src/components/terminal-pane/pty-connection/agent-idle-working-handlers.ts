@@ -45,6 +45,8 @@ export function installAgentIdleWorkingHandlers(session: ConnectPanePtySession):
     session.clearTitleOnlyInterruptTimer()
     // Why: title reversion alone is not process death. The process/PTY tracker
     // owns removing agent rows when the TUI actually exits.
+    // Why: cleanly exited agent must not auto-resume with --resume on app relaunch.
+    useAppStore.getState().clearSleepingAgentSession(session.cacheKey)
   }
   // Why: inject ORCA_PANE_KEY so global Claude/Codex hooks can attribute their
   // callbacks to the correct Orca pane without resolving worktrees from cwd.
