@@ -23,6 +23,7 @@ import {
   deleteLegacyAgentStatus,
   type HookListenerState
 } from '../listener-state'
+import { resolvePrompt, resolveToolState } from '../prompt-fields'
 import { extractToolFields, isNewTurnEvent } from '../provider-event-routing'
 import { readString } from '../tool-input-preview'
 import {

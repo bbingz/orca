@@ -12,7 +12,6 @@ import {
   createHookListenerState,
   type HookListenerState
 } from '../shared/agent-hook-listener/listener-state'
-import { cacheRelayLegacyAgentStatus } from '../shared/agent-status-legacy-relay-cache'
 import {
   getEndpointFileName,
   writeEndpointFile
@@ -341,9 +340,5 @@ export class RelayAgentHookServer {
     options: { isReplay?: boolean } = {}
   ): void {
     applyRelayHookEvent(this.eventApplyHost(), event, source, env, version, options)
-  }
-
-  private ingestSpoolRecord(record: SpoolRecord): void {
-    ingestRelaySpoolRecord(this.eventApplyHost(), record)
   }
 }

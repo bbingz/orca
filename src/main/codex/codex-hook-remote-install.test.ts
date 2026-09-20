@@ -19,6 +19,7 @@ function createFakeSftp(initialFiles: Record<string, string> = {}): {
     code: 2,
     message: `ENOENT ${path}`
   })
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Test mock implementing minimal SFTPWrapper surface.
   const sftp = {
     readFile: (path: string, _enc: string, cb: (err: unknown, data?: string) => void): void => {
       const value = files.get(path)
@@ -76,6 +77,15 @@ function createFakeSftp(initialFiles: Record<string, string> = {}): {
   return { sftp, files }
 }
 
+type ParsedHooksFile = {
+  hooks: Record<string, { hooks?: { command?: string }[] }[]>
+}
+
+function parseHooksFile(raw: string | undefined): ParsedHooksFile {
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Test helper parsing remote hook json shape.
+  return JSON.parse(raw ?? '{}') as ParsedHooksFile
+}
+
 function hookTrustBlock(content: string, key: string): string {
   const header = `[hooks.state."${key}"]`
   const start = content.indexOf(header)
@@ -116,9 +126,7 @@ describe('Codex remote hook prepend + trust migration', () => {
 
     expect(status.state).toBe('installed')
     expect(repeatedStatus.state).toBe('installed')
-    const hooks = JSON.parse(files.get(remoteHooksPath)!) as {
-      hooks: Record<string, { hooks?: { command?: string }[] }[]>
-    }
+    const hooks = parseHooksFile(files.get(remoteHooksPath))
     expect(hooks.hooks.Stop?.[0]?.hooks?.[0]?.command).toContain('codex-hook.sh')
     expect(hooks.hooks.Stop?.[1]?.hooks?.[0]?.command).toBe(userStopCommand)
     expect(hooks.hooks.SubagentStart?.[0]?.hooks?.[0]?.command).toContain('codex-hook.sh')
@@ -187,9 +195,7 @@ describe('Codex remote hook prepend + trust migration', () => {
       [posixHooksPath, sshFiles, '/home/dev/.codex/config.toml'],
       [wslHooksPath, wslFiles, '/mnt/c/Users/me/.codex/config.toml']
     ] as const) {
-      const hooks = JSON.parse(files.get(hooksPath)!) as {
-        hooks: Record<string, { hooks?: { command?: string }[] }[]>
-      }
+      const hooks = parseHooksFile(files.get(hooksPath))
       expect(hooks.hooks.Stop?.[0]?.hooks?.[0]?.command).toContain('codex-hook.sh')
       expect(hooks.hooks.Stop?.[1]?.hooks?.[0]?.command).toBe(userA)
       expect(hooks.hooks.Stop?.[2]?.hooks?.[0]?.command).toBe(userB)

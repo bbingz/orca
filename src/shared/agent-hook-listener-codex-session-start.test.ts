@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { normalizeHookPayload } from './agent-hook-listener'
-import { createHookListenerState } from './agent-hook-listener/listener-state'
+import {
+  createHookListenerState,
+  seedLegacyAgentStatusForTests
+} from './agent-hook-listener/listener-state'
 import { makePaneKey } from './stable-pane-id'
 import { PANE_KEY } from './agent-hook-listener-test-harness'
 
@@ -59,8 +62,8 @@ describe('Codex SessionStart listener obligations', () => {
     if (!current || !other) {
       throw new Error('expected working status fixtures')
     }
-    state.lastStatusByPaneKey.set(PANE_KEY, current)
-    state.lastStatusByPaneKey.set(otherPane, other)
+    seedLegacyAgentStatusForTests(state, current)
+    seedLegacyAgentStatusForTests(state, other)
 
     const started = normalizeHookPayload(
       state,
@@ -91,7 +94,7 @@ describe('Codex SessionStart listener obligations', () => {
     if (!claude) {
       throw new Error('expected Claude working status fixture')
     }
-    state.lastStatusByPaneKey.set(PANE_KEY, claude)
+    seedLegacyAgentStatusForTests(state, claude)
 
     normalizeHookPayload(
       state,

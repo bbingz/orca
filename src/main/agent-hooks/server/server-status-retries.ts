@@ -7,6 +7,7 @@ import {
 import type { AgentHookSource } from '../../../shared/agent-hook-relay'
 import { CodexSubagentPollScheduler } from '../../../shared/codex-subagent-poll-scheduler'
 import type { AgentHookEventPayload } from '../../../shared/agent-hook-listener/listener-event'
+import { deleteLegacyAgentStatus } from '../../../shared/agent-hook-listener/listener-state'
 import type { EnrichedAgentHookEventPayload } from './server-types'
 import {
   ASSISTANT_MESSAGE_RETRY_ATTEMPTS,
@@ -55,7 +56,7 @@ export abstract class AgentHookServerStatusRetries extends AgentHookServerStatus
     if (!status || !this.canApplyCodexSessionStart(status, expectedConnectionId)) {
       return
     }
-    this.state.lastStatusByPaneKey.delete(paneKey)
+    deleteLegacyAgentStatus(this.state, paneKey)
     // Why: SessionStart is an idle metadata boundary, so remove the stale row
     // without emitting a synthetic visible status for the new session.
     this.clearAssistantMessageRetry(paneKey)

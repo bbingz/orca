@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
 import { normalizeHookPayload } from '../../shared/agent-hook-listener'
-import { createHookListenerState } from '../../shared/agent-hook-listener/listener-state'
+import {
+  createHookListenerState,
+  seedLegacyAgentStatusForTests
+} from '../../shared/agent-hook-listener/listener-state'
 import { PANE_KEY } from '../../shared/agent-hook-listener-test-harness'
 import { AgentHookServer } from './server'
 
@@ -26,7 +29,7 @@ describe('review: Codex root identity isolation', () => {
     if (!parent) {
       throw new Error('missing parent fixture')
     }
-    state.lastStatusByPaneKey.set(PANE_KEY, parent)
+    seedLegacyAgentStatusForTests(state, parent)
     normalizeHookPayload(
       state,
       'codex',
