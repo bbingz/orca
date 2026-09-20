@@ -13,8 +13,18 @@ const EXIT_WAIT = {
   exitCode: 42
 } satisfies RuntimeTerminalWait
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
 function results(messages: readonly string[]): Record<string, unknown>[] {
-  return messages.map((message) => JSON.parse(message).result as Record<string, unknown>)
+  return messages.flatMap((message) => {
+    const parsed: unknown = JSON.parse(message)
+    if (isRecord(parsed) && isRecord(parsed.result)) {
+      return [parsed.result]
+    }
+    return []
+  })
 }
 
 describe('terminal multiplex exit capability', () => {

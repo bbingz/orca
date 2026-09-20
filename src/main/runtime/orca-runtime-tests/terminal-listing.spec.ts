@@ -105,6 +105,7 @@ describe('OrcaRuntimeService', () => {
 
   it('derives terminal tab lifecycle from the pty connected/lastExitCode state', () => {
     const runtime = createRuntime()
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Test harness accesses private runtime fields.
     const internals = runtime as unknown as {
       recordPtyWorktree: (
         ptyId: string,
