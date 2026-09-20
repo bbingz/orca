@@ -10,6 +10,7 @@ it('preserves renderer browser ownership across headless reconciliation and clos
   const closeSessionTab = vi.fn()
   const closeTab = vi.fn().mockResolvedValue(undefined)
   const runtime = new OrcaRuntimeService(store)
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Test harness mocks partial OffscreenBrowserBackend.
   runtime.setOffscreenBrowserBackend({ closeTab } as never)
   const forgetTabs = vi.spyOn(runtime['clientSessionTabSelections'], 'forgetTabs')
   runtime.setNotifier({
@@ -126,6 +127,7 @@ it('preserves renderer browser ownership across headless reconciliation and clos
   expect(closeSessionTab).toHaveBeenCalledWith('browser-unified-1', TEST_WORKTREE_ID)
   expect(closeTab).not.toHaveBeenCalled()
 
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Test harness mocks partial AgentBrowserBridge.
   runtime.setAgentBrowserBridge({
     tabList: vi.fn(() => ({
       tabs: [
@@ -158,7 +160,9 @@ it('preserves renderer browser ownership across headless reconciliation and clos
 
 it('still preserves live offscreen pages from a legacy merge-suffix snapshot', () => {
   const runtime = new OrcaRuntimeService(store)
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Test harness mocks partial OffscreenBrowserBackend.
   runtime.setOffscreenBrowserBackend({ closeTab: vi.fn() } as never)
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Test harness mocks partial AgentBrowserBridge.
   runtime.setAgentBrowserBridge({
     tabList: () => ({
       tabs: [

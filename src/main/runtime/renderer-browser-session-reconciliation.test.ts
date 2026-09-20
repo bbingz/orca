@@ -56,6 +56,7 @@ function reconcile(
   existing: RuntimeMobileSessionTabsSnapshot = snapshot
 ): RuntimeMobileSessionTabsSnapshot | undefined {
   const storeMobileSessionSnapshot = vi.fn()
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Test invokes protected reconciliation method on class prototype.
   const proto = OrcaRuntimeWithReconcileHeadlessMobileSessionBrowserTabs.prototype as unknown as {
     reconcileHeadlessMobileSessionBrowserTabs(
       worktreeId: string,
