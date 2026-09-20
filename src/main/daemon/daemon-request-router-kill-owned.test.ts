@@ -54,7 +54,9 @@ describe('daemon killOwned router ownership', () => {
         throw new Error('not used')
       }
     })
-    return server as unknown as DaemonServerPrivate
+    const serverUnknown: unknown = server
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Test inspects private router and host properties to verify killOwned race protections.
+    return serverUnknown as DaemonServerPrivate
   }
 
   it('does not cancel or clear a replacement before rejecting a stale killOwned', async () => {

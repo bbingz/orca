@@ -431,18 +431,18 @@ describe('DaemonPtyAdapter (IPtyProvider)', () => {
         .mockResolvedValue()
       const requestSpy = vi
         .spyOn(DaemonClient.prototype, 'request')
-        .mockImplementation(async (type: string) =>
+        .mockImplementation(async (type: string): Promise<unknown> =>
           type === 'getSize'
-            ? ({ size: { cols: 100, rows: 30 } } as never)
+            ? { size: { cols: 100, rows: 30 } }
             : type === 'createOrAttach'
-              ? ({
+              ? {
                   isNew: true,
                   pid: 77,
                   shellState: 'unsupported',
                   snapshot: null,
                   incarnationId: 'owned-incarnation'
-                } as never)
-              : ({} as never)
+                }
+              : {}
         )
       const current = new DaemonPtyAdapter({ socketPath, tokenPath })
       try {
@@ -473,18 +473,18 @@ describe('DaemonPtyAdapter (IPtyProvider)', () => {
         .mockResolvedValue()
       const requestSpy = vi
         .spyOn(DaemonClient.prototype, 'request')
-        .mockImplementation(async (type: string) =>
+        .mockImplementation(async (type: string): Promise<unknown> =>
           type === 'getSize'
-            ? ({ size: { cols: 100, rows: 30 } } as never)
+            ? { size: { cols: 100, rows: 30 } }
             : type === 'createOrAttach'
-              ? ({
+              ? {
                   isNew: true,
                   pid: 77,
                   shellState: 'unsupported',
                   snapshot: null,
                   incarnationId: 'owned-incarnation'
-                } as never)
-              : ({} as never)
+                }
+              : {}
         )
       const legacy = new DaemonPtyAdapter({ socketPath, tokenPath, protocolVersion: 30 })
       try {
@@ -516,9 +516,9 @@ describe('DaemonPtyAdapter (IPtyProvider)', () => {
         .mockResolvedValue()
       const requestSpy = vi
         .spyOn(DaemonClient.prototype, 'request')
-        .mockImplementation(async (type: string) => {
+        .mockImplementation(async (type: string): Promise<unknown> => {
           if (type === 'getSize') {
-            return { size: { cols: 100, rows: 30 } } as never
+            return { size: { cols: 100, rows: 30 } }
           }
           if (type === 'createOrAttach') {
             return {
@@ -527,7 +527,7 @@ describe('DaemonPtyAdapter (IPtyProvider)', () => {
               shellState: 'unsupported',
               snapshot: null,
               incarnationId: 'owned-incarnation'
-            } as never
+            }
           }
           throw new Error('kill transport lost')
         })
