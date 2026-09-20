@@ -20,10 +20,10 @@ describe('isWindowsAbsolutePathLike', () => {
   })
 
   it('returns false for non-strings instead of throwing (#14016)', () => {
-    expect(isWindowsAbsolutePathLike(undefined as unknown as string)).toBe(false)
-    expect(isWindowsAbsolutePathLike(null as unknown as string)).toBe(false)
+    expect(isWindowsAbsolutePathLike(undefined)).toBe(false)
+    expect(isWindowsAbsolutePathLike(null)).toBe(false)
     expect(isWindowsAbsolutePathLike('')).toBe(false)
-    expect(isRuntimePathAbsolute(undefined as unknown as string)).toBe(false)
+    expect(isRuntimePathAbsolute(undefined)).toBe(false)
   })
 })
 

@@ -29,31 +29,46 @@ export {
 } from '../external-worktree-visibility'
 export { shouldShowWorktree } from '../worktree-visibility-resolution'
 
+export type CorruptedWorkspaceLayoutSettings = {
+  workspaceDir?: unknown
+  nestWorkspaces?: unknown
+  workspaceDirHistory?: unknown
+}
+
 export function buildKnownOrcaWorkspaceLayouts(
-  settings: Pick<GlobalSettings, 'workspaceDir' | 'nestWorkspaces' | 'workspaceDirHistory'>,
+  settings:
+    | Pick<GlobalSettings, 'workspaceDir' | 'nestWorkspaces' | 'workspaceDirHistory'>
+    | CorruptedWorkspaceLayoutSettings,
   repo?: Pick<Repo, 'path' | 'connectionId' | 'worktreeBasePath'>
 ): OrcaWorkspaceLayout[] {
   const layouts: OrcaWorkspaceLayout[] = []
+  const nestWorkspaces = Boolean(settings.nestWorkspaces)
   for (const basePath of resolveConfiguredWorktreeBasePaths(repo)) {
-    layouts.push({ path: basePath, nestWorkspaces: settings.nestWorkspaces })
+    layouts.push({ path: basePath, nestWorkspaces })
   }
   if (shouldIncludeWorkspaceLayout(repo, settings.workspaceDir)) {
     layouts.push({
       path: repo
         ? resolveWorkspaceLayoutPath(repo.path, settings.workspaceDir)
         : settings.workspaceDir,
-      nestWorkspaces: settings.nestWorkspaces
+      nestWorkspaces
     })
   }
-  appendWorkspaceLayouts(
-    layouts,
-    (settings.workspaceDirHistory ?? [])
-      .filter((layout) => shouldIncludeWorkspaceLayout(repo, layout?.path))
-      .map((layout) => ({
-        ...layout,
-        path: repo ? resolveWorkspaceLayoutPath(repo.path, layout.path) : layout.path
-      }))
-  )
+  const rawHistory = Array.isArray(settings.workspaceDirHistory) ? settings.workspaceDirHistory : []
+  for (const layout of rawHistory) {
+    if (
+      typeof layout === 'object' &&
+      layout !== null &&
+      'path' in layout &&
+      shouldIncludeWorkspaceLayout(repo, layout.path)
+    ) {
+      const nest = 'nestWorkspaces' in layout ? Boolean(layout.nestWorkspaces) : false
+      layouts.push({
+        path: repo ? resolveWorkspaceLayoutPath(repo.path, layout.path) : layout.path,
+        nestWorkspaces: nest
+      })
+    }
+  }
 
   const wslLayouts = repo ? buildWslWorkspaceLayouts(repo.path, settings) : []
   appendWorkspaceLayouts(layouts, wslLayouts)
@@ -92,7 +107,9 @@ function shouldIncludeWorkspaceLayout(
 
 function buildWslWorkspaceLayouts(
   repoPath: string,
-  settings: Pick<GlobalSettings, 'nestWorkspaces' | 'workspaceDirHistory'>
+  settings:
+    | Pick<GlobalSettings, 'nestWorkspaces' | 'workspaceDirHistory'>
+    | CorruptedWorkspaceLayoutSettings
 ): OrcaWorkspaceLayout[] {
   const parsed = parseWslUncPath(repoPath)
   if (!parsed) {
@@ -104,10 +121,19 @@ function buildWslWorkspaceLayouts(
     return []
   }
   const root = `//wsl.localhost/${parsed.distro}${linuxHome}/orca/workspaces`
-  const historicalModes = (settings.workspaceDirHistory ?? []).flatMap((layout) =>
-    typeof layout?.nestWorkspaces === 'boolean' ? [layout.nestWorkspaces] : []
-  )
-  const modes = [settings.nestWorkspaces, ...historicalModes]
+  const rawHistory = Array.isArray(settings.workspaceDirHistory) ? settings.workspaceDirHistory : []
+  const historicalModes: boolean[] = []
+  for (const layout of rawHistory) {
+    if (
+      typeof layout === 'object' &&
+      layout !== null &&
+      'nestWorkspaces' in layout &&
+      typeof layout.nestWorkspaces === 'boolean'
+    ) {
+      historicalModes.push(layout.nestWorkspaces)
+    }
+  }
+  const modes = [Boolean(settings.nestWorkspaces), ...historicalModes]
   return [...new Set(modes)].map((nestWorkspaces) => ({ path: root, nestWorkspaces }))
 }
 

@@ -13,7 +13,8 @@ import {
   isLegacyRepoForExternalWorktreeVisibility,
   shouldShowWorktree,
   toDetectedWorktree,
-  EXTERNAL_WORKTREE_VISIBILITY_ROLLOUT_AT
+  EXTERNAL_WORKTREE_VISIBILITY_ROLLOUT_AT,
+  type CorruptedWorkspaceLayoutSettings
 } from './ownership'
 
 const LARGE_WORKSPACE_HISTORY_COUNT = 150_000
@@ -96,6 +97,18 @@ function makeSettings(overrides: Partial<GlobalSettings> = {}): GlobalSettings {
     terminalLineHeight: 1.2,
     ...overrides
   } as GlobalSettings
+}
+
+function makeCorruptedSettings(
+  overrides: Omit<Partial<GlobalSettings>, 'workspaceDir' | 'workspaceDirHistory'> &
+    CorruptedWorkspaceLayoutSettings
+): CorruptedWorkspaceLayoutSettings {
+  return {
+    workspaceDir: '/orca/workspaces',
+    nestWorkspaces: true,
+    workspaceDirHistory: [],
+    ...overrides
+  }
 }
 
 describe('worktree ownership classification', () => {
@@ -270,14 +283,14 @@ describe('worktree ownership classification', () => {
 
   it('skips corrupt workspaceDirHistory paths without throwing (#14016)', () => {
     const repo = makeRepo({ path: 'D:/orca/workspaces/repo' })
-    const settings = makeSettings({
+    const settings = makeCorruptedSettings({
       workspaceDir: 'D:/orca/workspaces',
       nestWorkspaces: false,
       workspaceDirHistory: [
-        null as never,
-        undefined as never,
-        { path: undefined as unknown as string, nestWorkspaces: false },
-        { path: null as unknown as string, nestWorkspaces: true },
+        null,
+        undefined,
+        { path: undefined, nestWorkspaces: false },
+        { path: null, nestWorkspaces: true },
         { path: '', nestWorkspaces: false },
         { path: 'D:/old/workspaces', nestWorkspaces: true }
       ]
@@ -293,8 +306,8 @@ describe('worktree ownership classification', () => {
 
   it('keeps valid workspace history when the current workspace path is corrupt (#14016)', () => {
     const repo = makeRepo()
-    const settings = makeSettings({
-      workspaceDir: undefined as unknown as string,
+    const settings = makeCorruptedSettings({
+      workspaceDir: undefined,
       workspaceDirHistory: [{ path: '/old/workspaces', nestWorkspaces: false }]
     })
 
@@ -305,9 +318,9 @@ describe('worktree ownership classification', () => {
 
   it('ignores corrupt history entries when deriving WSL layout modes (#14016)', () => {
     const repo = makeRepo({ path: '//wsl.localhost/Ubuntu/home/dev/repo' })
-    const settings = makeSettings({
-      workspaceDir: undefined as unknown as string,
-      workspaceDirHistory: [null as never, { path: '/old/workspaces', nestWorkspaces: false }]
+    const settings = makeCorruptedSettings({
+      workspaceDir: undefined,
+      workspaceDirHistory: [null, { path: '/old/workspaces', nestWorkspaces: false }]
     })
 
     const layouts = buildKnownOrcaWorkspaceLayouts(settings, repo)
