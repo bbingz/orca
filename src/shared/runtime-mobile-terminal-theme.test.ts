@@ -4,6 +4,11 @@ import {
   type RuntimeMobileTerminalThemeSettings
 } from './runtime-mobile-terminal-theme'
 
+function makeUntypedOverrides(raw: Record<string, unknown>): Record<string, string> {
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Simulates malformed overrides for defensive parser tests.
+  return raw as Record<string, string>
+}
+
 describe('resolveRuntimeMobileTerminalTheme', () => {
   it('returns undefined without settings', () => {
     expect(resolveRuntimeMobileTerminalTheme(undefined, true)).toBeUndefined()
@@ -80,11 +85,10 @@ describe('resolveRuntimeMobileTerminalTheme', () => {
     const projected = resolveRuntimeMobileTerminalTheme(
       {
         theme: 'dark',
-        terminalColorOverrides: {
+        terminalColorOverrides: makeUntypedOverrides({
           background: 'rgb(1, 2, 3)',
-          // Why: the wire shape is string-only; a stray array must not reach the phone.
-          foreground: ['#fff'] as unknown as string
-        },
+          foreground: ['#fff']
+        }),
         terminalBackgroundOpacity: 0.4
       },
       true

@@ -13,8 +13,23 @@ import type {
 import type { WorkspaceSessionState } from '../../shared/workspace-session-state-types'
 import { OrcaRuntimeService } from './orca-runtime'
 
+import type { WorktreeMeta } from '../../shared/worktree/meta-types'
+
 const WT = 'repo-1::/tmp/worktree-a'
 const LEAF = '11111111-1111-4111-8111-111111111111'
+
+const DEFAULT_META: WorktreeMeta = {
+  displayName: '',
+  comment: '',
+  linkedIssue: null,
+  linkedPR: null,
+  linkedLinearIssue: null,
+  isArchived: false,
+  isUnread: false,
+  isPinned: false,
+  sortOrder: 0,
+  lastActivityAt: 0
+}
 
 const BASE_SETTINGS = {
   workspaceDir: '/tmp/workspaces',
@@ -43,11 +58,11 @@ function makeStore(settings: Record<string, unknown>) {
     getRepo: () => repo,
     getRepos: () => [repo],
     addRepo: () => {},
-    updateRepo: () => undefined as never,
+    updateRepo: () => null,
     getAllWorktreeMeta: () => ({}),
     getWorktreeMeta: () => undefined,
     getGitHubCache: () => ({ pr: {}, issue: {} }),
-    setWorktreeMeta: () => undefined as never,
+    setWorktreeMeta: () => DEFAULT_META,
     removeWorktreeMeta: () => {},
     getWorkspaceSession: () => session,
     setWorkspaceSession: () => {},
@@ -92,13 +107,18 @@ type RuntimeInternals = {
   mobileSessionTabsByWorktree: Map<string, RuntimeMobileSessionTabsSnapshot>
 }
 
+function asRuntimeInternals(runtime: OrcaRuntimeService): RuntimeInternals {
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: White-box test accessing private runtime session builders.
+  return runtime as unknown as RuntimeInternals
+}
+
 function hydrateTerminalTab(
   settings: Record<string, unknown>
 ): RuntimeMobileSessionTerminalTab | undefined {
   const store = makeStore(settings)
   const runtime = new OrcaRuntimeService(store)
-  const session = store.getWorkspaceSession() as WorkspaceSessionState
-  return (runtime as unknown as RuntimeInternals).buildHeadlessMobileSessionTerminalTabs(
+  const session = store.getWorkspaceSession()
+  return asRuntimeInternals(runtime).buildHeadlessMobileSessionTerminalTabs(
     WT,
     [makePersistedTerminalTab()],
     session
@@ -144,7 +164,7 @@ describe('headless mobile terminal theme', () => {
 
   it('omits terminalTheme entirely when the runtime has no store', () => {
     const runtime = new OrcaRuntimeService()
-    const internals = runtime as unknown as RuntimeInternals
+    const internals = asRuntimeInternals(runtime)
     internals.publishPtyBackedMobileSessionTerminal(
       WT,
       { ptyId: 'pty-1', launchAgent: null, foregroundAgent: null, title: 'Terminal' },
@@ -159,7 +179,7 @@ describe('headless mobile terminal theme', () => {
     const runtime = new OrcaRuntimeService(
       makeStore({ theme: 'dark', terminalThemeDark: 'Tokyo Night' })
     )
-    const internals = runtime as unknown as RuntimeInternals
+    const internals = asRuntimeInternals(runtime)
     internals.publishPtyBackedMobileSessionTerminal(
       WT,
       { ptyId: 'pty-1', launchAgent: null, foregroundAgent: null, title: 'Terminal' },
@@ -175,7 +195,7 @@ describe('headless mobile terminal theme', () => {
     const runtime = new OrcaRuntimeService(
       makeStore({ theme: 'dark', terminalThemeDark: 'Tokyo Night' })
     )
-    const internals = runtime as unknown as RuntimeInternals
+    const internals = asRuntimeInternals(runtime)
     internals.resolveTerminalWorkspaceLaunchScope = async () => ({
       id: WT,
       path: '/tmp/worktree-a',
