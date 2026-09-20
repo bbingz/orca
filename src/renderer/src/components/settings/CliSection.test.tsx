@@ -12,19 +12,28 @@ import {
 } from '@/lib/agent-feature-install-commands'
 import { CliSection } from './CliSection'
 
-const capturedPanel = vi.hoisted(() => ({
-  canUseLocalSkillFreshness: true,
-  props: null as null | {
-    command: string
-    installedCommand: string
-    terminalCommands?: { install?: string; update?: string }
-    terminalRuntime?: { runtime: 'host' | 'wsl'; wslDistro?: string | null; label: string }
-    freshnessSkillName?: string
-    getPrerequisiteStatus: () => Promise<unknown>
-    onBeforeOpenTerminal: () => Promise<void>
-  },
-  useInstalledAgentSkill: vi.fn()
-}))
+type CapturedPanelProps = {
+  command: string
+  installedCommand: string
+  terminalCommands?: { install?: string; update?: string }
+  terminalRuntime?: { runtime: 'host' | 'wsl'; wslDistro?: string | null; label: string }
+  freshnessSkillName?: string
+  getPrerequisiteStatus: () => Promise<unknown>
+  onBeforeOpenTerminal: () => Promise<void>
+}
+
+const capturedPanel = vi.hoisted(() => {
+  const state: {
+    canUseLocalSkillFreshness: boolean
+    props: CapturedPanelProps | null
+    useInstalledAgentSkill: ReturnType<typeof vi.fn>
+  } = {
+    canUseLocalSkillFreshness: true,
+    props: null,
+    useInstalledAgentSkill: vi.fn()
+  }
+  return state
+})
 const toastError = vi.hoisted(() => vi.fn())
 
 vi.mock('sonner', () => ({ toast: { error: toastError, success: vi.fn() } }))

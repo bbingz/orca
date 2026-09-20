@@ -20,8 +20,15 @@ const FEATURE_SKILL_NAMES: Record<OnboardingFeatureSetupId, string> = {
   linearTickets: ORCA_LINEAR_SKILL_NAME
 }
 
+const ONBOARDING_FEATURE_SETUP_IDS = [
+  'browserUse',
+  'computerUse',
+  'orchestration',
+  'linearTickets'
+] as const
+
 function selectedOnboardingFeatureSkillNames(selection: OnboardingFeatureSetupSelection): string[] {
-  return (Object.keys(FEATURE_SKILL_NAMES) as OnboardingFeatureSetupId[])
+  return ONBOARDING_FEATURE_SETUP_IDS
     .filter((id) => selection[id])
     .map((id) => FEATURE_SKILL_NAMES[id])
 }
