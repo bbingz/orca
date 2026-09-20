@@ -13,9 +13,7 @@ export const DEFAULT_AGENT_ROW_DISPLAY_FIELDS: AgentRowDisplayField[] = [
   ...AGENT_ROW_DISPLAY_FIELDS
 ]
 
-export function normalizeAgentRowDisplayFields(
-  fields: readonly unknown[] | null | undefined
-): AgentRowDisplayField[] {
+export function normalizeAgentRowDisplayFields(fields: unknown): AgentRowDisplayField[] {
   const source = Array.isArray(fields) ? fields : DEFAULT_AGENT_ROW_DISPLAY_FIELDS
   const normalized: AgentRowDisplayField[] = []
   for (const field of AGENT_ROW_DISPLAY_FIELDS) {

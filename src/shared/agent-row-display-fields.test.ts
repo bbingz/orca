@@ -22,10 +22,10 @@ describe('normalizeAgentRowDisplayFields', () => {
   })
 
   it('defaults when the persisted value is not an array', () => {
-    expect(normalizeAgentRowDisplayFields({ model: true } as never)).toEqual(
+    expect(normalizeAgentRowDisplayFields({ model: true })).toEqual(
       DEFAULT_AGENT_ROW_DISPLAY_FIELDS
     )
-    expect(normalizeAgentRowDisplayFields('model' as never)).toEqual(
+    expect(normalizeAgentRowDisplayFields('model')).toEqual(
       DEFAULT_AGENT_ROW_DISPLAY_FIELDS
     )
   })

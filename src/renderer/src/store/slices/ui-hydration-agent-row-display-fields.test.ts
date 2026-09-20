@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { PersistedUIState } from '../../../../shared/persisted-ui-state-types'
+import type { AgentRowDisplayField } from '../../../../shared/ui-chrome-types'
 import { createUIStore, makePersistedUI } from './ui-slice-test-harness'
 
 const mocks = vi.hoisted(() => ({
@@ -50,14 +50,18 @@ describe('createUISlice agent row display fields', () => {
     vi.stubGlobal('window', { api: { ui: { set: setUI } } })
     const store = createUIStore()
 
-    store.getState().setAgentRowDisplayFields(['model', 'bogus' as never, 'provider-icon'])
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Test input exercises filtering of invalid display field values.
+    const invalidFields = ['model', 'bogus', 'provider-icon'] as AgentRowDisplayField[]
+    store.getState().setAgentRowDisplayFields(invalidFields)
 
     expect(store.getState().agentRowDisplayFields).toEqual(['provider-icon', 'model'])
     expect(setUI).toHaveBeenCalledWith({ agentRowDisplayFields: ['provider-icon', 'model'] })
 
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Test input exercises unknown field filtering in persisted storage hydration.
+    const fieldsWithUnknownToken = ['relative-time', 'nope'] as AgentRowDisplayField[]
     store.getState().hydratePersistedUI(
       makePersistedUI({
-        agentRowDisplayFields: ['relative-time', 'nope' as never]
+        agentRowDisplayFields: fieldsWithUnknownToken
       })
     )
     expect(store.getState().agentRowDisplayFields).toEqual(['relative-time'])
@@ -66,11 +70,7 @@ describe('createUISlice agent row display fields', () => {
   it('hydrates absent fields to the all-on default', () => {
     const store = createUIStore()
 
-    store.getState().hydratePersistedUI(
-      makePersistedUI({
-        agentRowDisplayFields: undefined
-      } as Partial<PersistedUIState>)
-    )
+    store.getState().hydratePersistedUI(makePersistedUI({}))
 
     expect(store.getState().agentRowDisplayFields).toEqual([
       'provider-icon',
