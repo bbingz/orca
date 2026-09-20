@@ -16,16 +16,19 @@ function githubIssueErrorMessage(error: unknown): string {
   return stderr.trim() || stdout.trim()
 }
 
+type ErrorWithCode = { code?: unknown }
+
+function isErrorWithCode(error: unknown): error is ErrorWithCode {
+  return typeof error === 'object' && error !== null && 'code' in error
+}
+
 function isRecoverableOversizedIssueBodyError(error: unknown): boolean {
   const message = githubIssueErrorMessage(error)
   if (/body is too long \(maximum is \d+ characters\)/i.test(message)) {
     return true
   }
   // Why: Windows CreateProcess rejects argv over 32767 before gh can return 422.
-  const code =
-    typeof error === 'object' && error !== null && 'code' in error
-      ? (error as { code?: unknown }).code
-      : undefined
+  const code = isErrorWithCode(error) ? error.code : undefined
   return code === 'ENAMETOOLONG' || /ENAMETOOLONG/i.test(message)
 }
 

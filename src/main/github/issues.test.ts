@@ -79,16 +79,19 @@ import { _resetOriginGitHubApiRepositoryCache } from './github-api-repository'
 
 function expectNoRawBodyField(args: unknown): asserts args is string[] {
   expect(Array.isArray(args)).toBe(true)
-  const list = args as string[]
-  for (let i = 0; i < list.length; i++) {
-    expect(list[i]).not.toMatch(/^body=/)
+  if (!Array.isArray(args)) {
+    return
+  }
+  for (let i = 0; i < args.length; i++) {
+    const item = String(args[i])
+    expect(item).not.toMatch(/^body=/)
     if (
-      list[i] === '--raw-field' ||
-      list[i] === '-f' ||
-      list[i] === '--field' ||
-      list[i] === '-F'
+      item === '--raw-field' ||
+      item === '-f' ||
+      item === '--field' ||
+      item === '-F'
     ) {
-      expect(list[i + 1]).not.toMatch(/^body=/)
+      expect(String(args[i + 1])).not.toMatch(/^body=/)
     }
   }
 }
