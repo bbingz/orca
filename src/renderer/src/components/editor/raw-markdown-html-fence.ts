@@ -21,7 +21,7 @@ export function consumeMarkdownFenceDelimiterLine(
   if (!fenceMatch) {
     return null
   }
-  const fenceChar = fenceMatch[1][0] as '`' | '~'
+  const fenceChar: '`' | '~' = fenceMatch[1].startsWith('~') ? '~' : '`'
   const fenceLength = fenceMatch[1].length
   const lineEnd = lineRest.indexOf('\n')
   const suffix = lineRest.slice(fenceMatch[0].length, lineEnd === -1 ? undefined : lineEnd)

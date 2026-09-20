@@ -11,8 +11,10 @@ import {
   isReservedRichMarkdownTransportBody,
   skipInlineTransportStartScan
 } from './rich-markdown-source-transport'
-import { matchHtmlSuperscriptLinkSource } from './rich-markdown-html-superscript-link-source'
-import { consumeMarkdownFenceDelimiterLine } from './raw-markdown-html-fence'
+import {
+  consumeMarkdownFenceDelimiterLine,
+  type MarkdownFenceState
+} from './raw-markdown-html-fence'
 
 const INLINE_HTML_PATTERN = /^<!--[\s\S]*?-->|^<\/?[A-Za-z][\w.:-]*(?:\s[^<>]*?)?\/?>/
 
@@ -62,7 +64,7 @@ export function encodeRawMarkdownHtmlForRichEditor(
   const { transport } = codec
   let index = 0
   let isLineStart = true
-  const fenceState = { activeFence: null as '`' | '~' | null, activeFenceLength: 0 }
+  const fenceState: MarkdownFenceState = { activeFence: null, activeFenceLength: 0 }
   let result = ''
 
   while (index < normalizedContent.length) {
