@@ -355,10 +355,10 @@ describe('WorktreeCardAgents activation', () => {
     mockAgentStatusByPaneKey = { [paneKey]: { worktreeId: 'wt-1' } }
     const scheduledFrames: FrameRequestCallback[] = []
     const originalRAF = globalThis.requestAnimationFrame
-    globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => {
+    globalThis.requestAnimationFrame = (cb: FrameRequestCallback): number => {
       scheduledFrames.push(cb)
       return 1
-    }) as typeof requestAnimationFrame
+    }
 
     try {
       const { default: WorktreeCardAgents } = await import('./WorktreeCardAgents')
