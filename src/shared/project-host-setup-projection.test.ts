@@ -322,6 +322,45 @@ describe('project host setup projection', () => {
     })
   })
 
+  it('prefers probed git remote identity over stale cached avatar icon label across renames', () => {
+    const projection = projectHostSetupProjectionFromRepos([
+      repo({
+        id: 'renamed-repo-with-stale-icon',
+        path: '/Users/alice/app',
+        displayName: 'app',
+        gitRemoteIdentity: {
+          canonicalKey: 'github.com/org-b/app',
+          remoteName: 'origin',
+          remoteUrl: 'https://github.com/org-b/app.git'
+        },
+        repoIcon: {
+          type: 'image',
+          src: 'https://github.com/owner-a.png?size=64',
+          source: 'github',
+          label: 'owner-a/app'
+        }
+      }),
+      repo({
+        id: 'new-host-repo',
+        path: '/home/alice/app',
+        displayName: 'app',
+        connectionId: 'builder',
+        gitRemoteIdentity: {
+          canonicalKey: 'github.com/org-b/app',
+          remoteName: 'origin',
+          remoteUrl: 'https://github.com/org-b/app.git'
+        }
+      })
+    ])
+
+    expect(projection.projects).toHaveLength(1)
+    expect(projection.projects[0]).toMatchObject({
+      id: 'github:org-b/app',
+      sourceRepoIds: ['renamed-repo-with-stale-icon', 'new-host-repo'],
+      providerIdentity: { provider: 'github', owner: 'org-b', repo: 'app' }
+    })
+  })
+
   it('uses a GHES canonical remote identity when the remote URL is unavailable', () => {
     const projection = projectHostSetupProjectionFromRepos([
       repo({
@@ -577,6 +616,20 @@ describe('isGitHubBackedRepo', () => {
 
   it('is false for a plain local repo with no provider signal', () => {
     expect(isGitHubBackedRepo(repo({ id: 'r', path: '/r', displayName: 'r' }))).toBe(false)
+  })
+
+  it('is true when gitRemoteIdentity encodes a GitHub remote', () => {
+    const target = repo({
+      id: 'r',
+      path: '/r',
+      displayName: 'r',
+      gitRemoteIdentity: {
+        canonicalKey: 'github.com/org-b/app',
+        remoteName: 'origin',
+        remoteUrl: 'git@github.com:org-b/app.git'
+      }
+    })
+    expect(isGitHubBackedRepo(target)).toBe(true)
   })
 })
 
