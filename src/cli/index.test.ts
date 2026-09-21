@@ -516,7 +516,9 @@ describe('orca root help', () => {
 
     const rootHelp = String(logSpy.mock.calls[0][0])
     expect(rootHelp).toContain('Linear:')
-    expect(rootHelp).toContain('linear                    Read Linear ticket context for agents')
+    expect(rootHelp).toContain(
+      'linear                    Read and update Linear issues and ticket context for agents'
+    )
     expect(rootHelp).not.toContain('linear issue')
     expect(rootHelp).not.toContain('linear search')
 
