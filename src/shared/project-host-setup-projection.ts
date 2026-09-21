@@ -37,6 +37,14 @@ export function getProjectProviderIdentity(
       ...(repo.upstream?.host ? { host: repo.upstream.host } : {})
     }
   }
+  // Why: git remote identity is authoritative and kept fresh by the remote probe; prefer it over
+  // a cached avatar icon that may be stale after a transfer or rename (#21515).
+  const fromRemote =
+    parseGitHubRemoteUrl(repo.gitRemoteIdentity?.remoteUrl) ??
+    parseGitHubCanonicalKey(repo.gitRemoteIdentity?.canonicalKey)
+  if (fromRemote) {
+    return fromRemote
+  }
   if (repo.repoIcon?.type === 'image' && repo.repoIcon.source === 'github') {
     const parts = (repo.repoIcon.label?.trim() ?? '').split('/')
     const iconOwner = parts[0]?.trim()
@@ -59,12 +67,7 @@ export function getProjectProviderIdentity(
       }
     }
   }
-  // Why: the remote URL retains HTTP(S) endpoint ports that the canonical
-  // key omits, so prefer it when reconstructing a host-qualified GHES identity.
-  return (
-    parseGitHubRemoteUrl(repo.gitRemoteIdentity?.remoteUrl) ??
-    parseGitHubCanonicalKey(repo.gitRemoteIdentity?.canonicalKey)
-  )
+  return null
 }
 
 function getProjectGitRemoteIdentity(

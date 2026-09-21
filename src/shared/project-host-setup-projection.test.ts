@@ -322,6 +322,35 @@ describe('project host setup projection', () => {
     })
   })
 
+  it('ranks git remote identity above a stale cached avatar icon (#21515)', () => {
+    const projection = projectHostSetupProjectionFromRepos([
+      repo({
+        id: 'transferred-repo',
+        path: '/Users/alice/app',
+        displayName: 'app',
+        // Cached avatar label was captured before org transfer:
+        repoIcon: {
+          type: 'image',
+          src: 'https://github.com/owner-a.png?size=64',
+          source: 'github',
+          label: 'owner-a/app'
+        },
+        // Freshly probed git remote reflects the post-transfer remote URL:
+        gitRemoteIdentity: {
+          canonicalKey: 'github.com/org-b/app',
+          remoteName: 'origin',
+          remoteUrl: 'git@github.com:org-b/app.git'
+        }
+      })
+    ])
+
+    expect(projection.projects).toHaveLength(1)
+    expect(projection.projects[0]).toMatchObject({
+      id: 'github:org-b/app',
+      providerIdentity: { provider: 'github', owner: 'org-b', repo: 'app' }
+    })
+  })
+
   it('uses a GHES canonical remote identity when the remote URL is unavailable', () => {
     const projection = projectHostSetupProjectionFromRepos([
       repo({
