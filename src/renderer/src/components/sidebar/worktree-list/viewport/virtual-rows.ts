@@ -242,10 +242,11 @@ export function getActiveStickyIndexesForScroll(args: {
     }
     return true
   })
+  // Why (#17855): a group header remains in normal flow until it reaches its slot; early pinning drops the header and creates blank gaps.
   const groupIndex = resolveWithHandoff(
     groupIndexes,
     hostIndex !== null ? HOST_STICKY_PINNED_HEIGHT : 0,
-    hostIndex === null
+    false
   )
 
   return { hostIndex, groupIndex }
@@ -330,5 +331,6 @@ export function getActiveStickyHeaderIndexForScroll(args: {
     return candidateIndex
   }
 
-  return getPreviousStickyHeaderIndex(args.stickyHeaderIndexes, candidateIndex) ?? candidateIndex
+  // Why (#17855): do not pin before reaching the row; keeps unreached first headers in normal flow.
+  return getPreviousStickyHeaderIndex(args.stickyHeaderIndexes, candidateIndex) ?? null
 }

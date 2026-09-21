@@ -155,6 +155,41 @@ describe('getActiveStickyIndexesForScroll', () => {
     ).toEqual({ hostIndex: null, groupIndex: 0 })
   })
 
+  it('does not prematurely pin the first project header before scroll reaches it (#17855)', () => {
+    // Why (#17855): a group header remains in normal flow until scrolled to;
+    // pinning early strips transform and causes visual drops or blank gaps.
+    const flatRows: RenderRow[] = [
+      groupRow('g1'),
+      itemStub('wt-1'),
+      groupRow('g2'),
+      itemStub('wt-2')
+    ]
+    const flatSticky = getStickyHeaderIndexes(flatRows)
+    const flatItems = [
+      virtualItem(0, 50),
+      virtualItem(1, 150),
+      virtualItem(2, 250),
+      virtualItem(3, 350)
+    ]
+    const beforeScroll = getActiveStickyIndexesForScroll({
+      rows: flatRows,
+      rangeStartIndex: 0,
+      scrollOffset: 0,
+      stickyHeaderIndexes: flatSticky,
+      virtualItems: flatItems
+    })
+    expect(beforeScroll).toEqual({ hostIndex: null, groupIndex: null })
+
+    const atScroll = getActiveStickyIndexesForScroll({
+      rows: flatRows,
+      rangeStartIndex: 0,
+      scrollOffset: 50,
+      stickyHeaderIndexes: flatSticky,
+      virtualItems: flatItems
+    })
+    expect(atScroll).toEqual({ hostIndex: null, groupIndex: 0 })
+  })
+
   it('does not pin a Project header whose virtual item is not mounted yet (#10088)', () => {
     // Why: after scrollToIndex/reveal, rangeStart can sit on group-b1 while
     // TanStack has only mounted host-b (and maybe a later item) this frame.

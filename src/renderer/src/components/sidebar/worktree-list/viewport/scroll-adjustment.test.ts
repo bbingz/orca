@@ -341,4 +341,16 @@ describe('estimateRenderRowSize', () => {
       })
     ).toBe(1)
   })
+
+  it('returns null when the initial header has not reached the top (#17855)', () => {
+    // Why (#17855): do not pin the first header before scroll reaches it to keep normal flow.
+    expect(
+      getActiveStickyHeaderIndexForScroll({
+        rangeStartIndex: 0,
+        scrollOffset: 20,
+        stickyHeaderIndexes: [0, 1],
+        virtualItems: [{ key: 'hdr:first', index: 0, start: 50, end: 86, size: 36, lane: 0 }]
+      })
+    ).toBeNull()
+  })
 })
