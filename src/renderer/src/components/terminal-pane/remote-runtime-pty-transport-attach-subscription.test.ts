@@ -12,6 +12,7 @@ let subscriptionCallbacks: MultiplexSubscriptionCallbacks = null
 let resolvedPaneHandle = 'terminal-1'
 
 const {
+  runtimeCall,
   runtimeSubscribe,
   subscriptionSendBinary,
   emitMultiplexReady,
@@ -382,6 +383,72 @@ describe('createRemoteRuntimePtyTransport', () => {
     emitSnapshot(latestSubscribePayload().streamId, 'recovered')
 
     expect(onErrorCleared.mock.calls.map(([message]) => message)).toEqual(errors)
+    transport.destroy?.()
+  })
+
+  it('unlatches connecting state and transitions to ended on terminal_not_found attach error', async () => {
+    const { createRemoteRuntimePtyTransport } = await import('./remote-runtime-pty-transport')
+    runtimeCall.mockImplementation(async (request: { method: string }) => {
+      if (request.method === 'terminal.resolvePane') {
+        return {
+          ok: false,
+          error: { code: 'terminal_not_found', message: 'terminal_not_found' }
+        }
+      }
+      return { ok: true, result: {} }
+    })
+
+    const onError = vi.fn()
+    const onPtyExit = vi.fn()
+    const transport = createRemoteRuntimePtyTransport('env-1', {
+      worktreeId: 'wt-1',
+      tabId: 'tab-1',
+      leafId: 'pane:1',
+      onPtyExit
+    })
+
+    transport.attach({
+      existingPtyId: 'remote:env-1@@stale-term-handle',
+      callbacks: { onError }
+    })
+
+    await vi.waitFor(() => {
+      expect(onError).toHaveBeenCalledWith('Remote terminal was closed.')
+    })
+
+    const recoveryState = transport.getRecoveryState?.()
+    expect(recoveryState?.phase).toBe('ended')
+    expect(onPtyExit).toHaveBeenCalledWith('remote:env-1@@stale-term-handle', -1)
+    expect(transport.retryRecovery?.()).toBe(false)
+
+    transport.destroy?.()
+  })
+
+  it('retires terminal when multiplex stream errors with terminal_not_found', async () => {
+    runtimeSubscribe.mockImplementation(
+      async (_args: unknown, callbacks: NonNullable<typeof subscriptionCallbacks>) => {
+        subscriptionCallbacks = callbacks
+        queueMicrotask(() =>
+          callbacks.onError?.({
+            code: 'terminal_not_found',
+            message: 'terminal_not_found'
+          })
+        )
+        return { unsubscribe: vi.fn(), sendBinary: subscriptionSendBinary }
+      }
+    )
+    const { createRemoteRuntimePtyTransport } = await import('./remote-runtime-pty-transport')
+    const onError = vi.fn()
+    const onPtyExit = vi.fn()
+    const transport = createRemoteRuntimePtyTransport('env-1', {
+      worktreeId: 'wt-1',
+      onPtyExit
+    })
+
+    transport.attach({ existingPtyId: 'remote:terminal-1', callbacks: { onError } })
+    await vi.waitFor(() => expect(onPtyExit).toHaveBeenCalledWith('remote:env-1@@terminal-1'))
+
+    expect(transport.getRecoveryState?.().phase).toBe('ended')
     transport.destroy?.()
   })
 })
