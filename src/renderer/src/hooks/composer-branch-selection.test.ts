@@ -59,6 +59,38 @@ describe('resolveComposerBranchSelection', () => {
     })
   })
 
+  it('replaces case-mismatched or segmented typed queries with the selected branch name', () => {
+    expect(
+      resolveComposerBranchSelection({
+        refName: 'origin/TV-foo-bar',
+        localBranchName: 'TV-foo-bar',
+        currentName: 'tv',
+        lastAutoName: ''
+      })
+    ).toEqual({
+      baseBranch: 'origin/TV-foo-bar',
+      branchNameOverride: 'TV-foo-bar',
+      branchAutoName: 'TV-foo-bar',
+      name: 'TV-foo-bar',
+      lastAutoName: 'TV-foo-bar'
+    })
+
+    expect(
+      resolveComposerBranchSelection({
+        refName: 'origin/feature/TV-foo-bar',
+        localBranchName: 'feature/TV-foo-bar',
+        currentName: 'TV',
+        lastAutoName: ''
+      })
+    ).toEqual({
+      baseBranch: 'origin/feature/TV-foo-bar',
+      branchNameOverride: 'feature/TV-foo-bar',
+      branchAutoName: 'feature/TV-foo-bar',
+      name: 'feature/TV-foo-bar',
+      lastAutoName: 'feature/TV-foo-bar'
+    })
+  })
+
   it('keeps manual branch-name overrides when preserving workspace edits', () => {
     expect(
       resolveComposerBranchNameOverrideForCreate({

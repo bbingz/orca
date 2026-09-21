@@ -130,6 +130,15 @@ describe('resolveSmartWorkspaceCommandValue', () => {
         sourceIntent: 'jira'
       })
     ).toBe('jira-ORCA-123')
+
+    expect(
+      resolveSmartWorkspaceCommandValue({
+        currentValue: 'create-branch',
+        rows: [row('create-branch', 'create-branch'), row('branch', 'branch-TV-foo-bar')],
+        isQueryStale: false,
+        sourceIntent: 'branch'
+      })
+    ).toBe('branch-TV-foo-bar')
   })
 
   it('leaves the current value alone when no rows are rendered', () => {

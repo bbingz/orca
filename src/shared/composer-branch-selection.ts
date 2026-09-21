@@ -15,11 +15,15 @@ export function resolveComposerBranchSelection(args: {
   lastAutoName: string
 }): ComposerBranchSelection {
   const trimmedCurrentName = args.currentName.trim()
+  const lowerCurrent = trimmedCurrentName.toLowerCase()
+  const lowerLocal = args.localBranchName.toLowerCase()
+  const lowerRef = args.refName.toLowerCase()
+  // Why: typed search queries can be lowercase, substring, or segment prefixes of the branch ref.
   const shouldAutoName =
     !trimmedCurrentName ||
     args.currentName === args.lastAutoName ||
-    args.localBranchName.startsWith(trimmedCurrentName) ||
-    args.refName.startsWith(trimmedCurrentName)
+    lowerLocal.includes(lowerCurrent) ||
+    lowerRef.includes(lowerCurrent)
   if (!shouldAutoName) {
     return {
       baseBranch: args.refName,

@@ -13,7 +13,10 @@ import {
   searchWorkspaceEmojiShortcodes,
   type WorkspaceEmojiSuggestion
 } from '@/lib/workspace-emoji-shortcodes'
-import { resolveSmartWorkspaceCommandValue } from './smart-workspace-command-value'
+import {
+  resolveSmartWorkspaceCommandValue,
+  type SmartWorkspaceSourceIntent
+} from './smart-workspace-command-value'
 import {
   buildSmartWorkspaceSourceRows,
   getVisibleBranchResults,
@@ -180,7 +183,7 @@ export function useSmartWorkspaceNameFieldPresentation(
   const isQueryStale =
     !linearUrlIntentOwnsInput && trimmedValue.length > 0 && trimmedDebouncedQuery !== trimmedValue
   // Why: unambiguous refs highlight their source row instead of the typed-text fallback.
-  const sourceIntent = useMemo<'github' | 'gitlab' | 'linear' | 'jira' | null>(() => {
+  const sourceIntent = useMemo<SmartWorkspaceSourceIntent>(() => {
     if (!isSmartWorkspaceSourceQueryWithinLimit(value)) {
       return null
     }
@@ -209,8 +212,24 @@ export function useSmartWorkspaceNameFieldPresentation(
         return 'linear'
       }
     }
+    // Why: in branches mode or when query explicitly targets a branch ref, arm matching branch rows.
+    if (
+      rows.some((row) => row.kind === 'branch') &&
+      (mode === 'branches' ||
+        trimmed.startsWith('origin/') ||
+        trimmed.startsWith('refs/') ||
+        (trimmed.includes('/') && !trimmed.includes(' ')) ||
+        rows.some(
+          (row) =>
+            row.kind === 'branch' &&
+            (row.refName.toLowerCase() === trimmed.toLowerCase() ||
+              row.localBranchName.toLowerCase() === trimmed.toLowerCase())
+        ))
+    ) {
+      return 'branch'
+    }
     return null
-  }, [jiraSource.intent, linearAvailable, rows, value])
+  }, [jiraSource.intent, linearAvailable, mode, rows, value])
   const unresolvedLinearUrlIntent =
     linearUrlIntentOwnsInput &&
     linearAvailable &&
