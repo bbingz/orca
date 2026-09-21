@@ -65,7 +65,9 @@ export function TerminalPane({
 
   const [shellValidationError, setShellValidationError] = useState<string | null>(null)
   const configuredShell = settings.terminalDefaultShell?.trim() ?? ''
-  const shellMode = configuredShell ? 'custom' : 'system'
+  // Why: preserve custom mode selection even when the configured shell string is empty while typing (#21586).
+  const [isCustomMode, setIsCustomMode] = useState<boolean>(() => Boolean(configuredShell))
+  const shellMode = isCustomMode || Boolean(configuredShell) ? 'custom' : 'system'
   const systemShell =
     (typeof window !== 'undefined' ? window.api?.platform?.get?.().shell?.trim() : '') || '/bin/zsh'
 
@@ -98,7 +100,12 @@ export function TerminalPane({
             value={shellMode}
             onChange={(value) => {
               setShellValidationError(null)
-              updateSettings({ terminalDefaultShell: value === 'system' ? '' : configuredShell })
+              if (value === 'system') {
+                setIsCustomMode(false)
+                updateSettings({ terminalDefaultShell: '' })
+              } else {
+                setIsCustomMode(true)
+              }
             }}
             options={[
               { value: 'system', label: `System shell (${systemShell})` },
