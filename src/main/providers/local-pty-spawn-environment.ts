@@ -40,6 +40,8 @@ export function buildLocalPtySpawnEnvironment(args: {
   stripPiProcessOwnerEnv(spawnEnv)
   removeAppImageRuntimeEnv(spawnEnv)
   removeInheritedNoColor(spawnEnv)
+  // Why: LaunchServices treats children inheriting __CFBundleIdentifier as Orca instances (#21768).
+  delete spawnEnv.__CFBundleIdentifier
   for (const key of spawn.envToDelete ?? []) {
     delete spawnEnv[key]
   }
