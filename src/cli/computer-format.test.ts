@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ComputerActionResult } from '../shared/runtime-types'
 import { formatComputerAction, prepareComputerCliJsonResult } from './computer-format'
 import { printResult } from './format'
@@ -54,6 +54,10 @@ describe('prepareComputerCliJsonResult', () => {
 })
 
 describe('formatComputerAction', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
   it('does not treat legacy action results without metadata as completed', () => {
     const result: ComputerActionResult = {
       snapshot: {
@@ -105,7 +109,7 @@ describe('formatComputerAction', () => {
     expect(output).not.toContain('Click completed')
   })
 
-  it('quotes worktree selectors safely for PowerShell follow-up command', () => {
+  it('quotes worktree selectors so a pasted Windows command keeps dollar signs', () => {
     const result: ComputerActionResult = {
       snapshot: {
         id: 'snap-1',
@@ -124,11 +128,11 @@ describe('formatComputerAction', () => {
       }
     }
 
+    vi.spyOn(process, 'platform', 'get').mockReturnValue('win32')
     const output = formatComputerAction('click', result, {
-      worktree: 'path:C:/work/$review',
-      shell: 'powershell'
+      worktree: 'path:C:/work/$review'
     })
 
-    expect(output).toContain("--worktree 'path:C:/work/$review'")
+    expect(output).toContain('--worktree path:C:/work/$"r"eview')
   })
 })
