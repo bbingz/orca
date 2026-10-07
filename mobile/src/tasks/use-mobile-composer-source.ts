@@ -129,7 +129,8 @@ export function useMobileComposerSource(args: UseMobileComposerSourceArgs) {
       )
       applyAutoName(
         resolveWorkItemAutoName({ ...identity, title: item.title, provider: 'github' }),
-        name
+        // Why: a bare number that found this item was the search query, not a typed name.
+        name.trim() === String(identity.number) ? '' : name
       )
       clearBaseAndBranch()
       if (identity.type !== 'pr' || !client || !repoId) {

@@ -160,11 +160,14 @@ export function buildJiraWorkspaceSource(
 export function shouldApplyWorkspaceSourceAutoName(args: {
   currentName: string
   lastAutoName: string
+  /** Number of the item being applied; a bare number that equals it was the search query. */
+  itemNumber?: number
 }): boolean {
   return (
     !args.currentName.trim() ||
     args.currentName === args.lastAutoName ||
-    isWorkItemLookupText(args.currentName)
+    isWorkItemLookupText(args.currentName) ||
+    (args.itemNumber !== undefined && args.currentName.trim() === String(args.itemNumber))
   )
 }
 

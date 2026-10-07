@@ -123,4 +123,14 @@ describe('workspace source policy', () => {
       shouldApplyWorkspaceSourceAutoName({ currentName: 'my workspace', lastAutoName: 'old' })
     ).toBe(false)
   })
+
+  it('keeps a typed all-digits name unless it is the number of the item being applied', () => {
+    expect(shouldApplyWorkspaceSourceAutoName({ currentName: '347', lastAutoName: '' })).toBe(false)
+    expect(
+      shouldApplyWorkspaceSourceAutoName({ currentName: '347', lastAutoName: '', itemNumber: 42 })
+    ).toBe(false)
+    expect(
+      shouldApplyWorkspaceSourceAutoName({ currentName: ' 42 ', lastAutoName: '', itemNumber: 42 })
+    ).toBe(true)
+  })
 })
