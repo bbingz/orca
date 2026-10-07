@@ -17,6 +17,7 @@ import {
 } from './orca-runtime-core'
 import { isTuiAgentEnabled } from '../../shared/tui-agent-selection'
 import { resolveAgentStartupPlanInputs } from '../../shared/agent-startup-plan-inputs'
+import { isGitBashAvailable } from '../git-bash'
 import { buildExecutionHostAgentStartupPlan } from '../opencode/opencode-model-startup-plan'
 import type { RuntimeTerminalCreate } from '../../shared/runtime-types'
 import type {
@@ -156,6 +157,7 @@ export class OrcaRuntimeWithCreateAgentSession extends OrcaRuntimeWithGetAgentSe
         // Why: `workspace.repo` is display metadata and may be a row from another host; the launch
         // shape must match the PTY route this scope already resolved.
         isRemote: Boolean(workspace.connectionId),
+        gitBashAvailable: isGitBashAvailable(),
         ...(request.agentArgs !== undefined ? { agentArgs: request.agentArgs } : {}),
         sessionOptions: this.toAgentSessionOptions(request.launchPreferences)
       })
