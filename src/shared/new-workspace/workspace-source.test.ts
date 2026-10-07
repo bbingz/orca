@@ -132,5 +132,12 @@ describe('workspace source policy', () => {
     expect(
       shouldApplyWorkspaceSourceAutoName({ currentName: ' 42 ', lastAutoName: '', itemNumber: 42 })
     ).toBe(true)
+    // Why: search parses "002" as #2, so picking #2 from that search is still a lookup.
+    expect(
+      shouldApplyWorkspaceSourceAutoName({ currentName: '002', lastAutoName: '', itemNumber: 2 })
+    ).toBe(true)
+    expect(
+      shouldApplyWorkspaceSourceAutoName({ currentName: '002', lastAutoName: '', itemNumber: 20 })
+    ).toBe(false)
   })
 })

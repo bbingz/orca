@@ -157,6 +157,12 @@ export function buildJiraWorkspaceSource(
   }
 }
 
+/** True when a bare number (zero-padding allowed, as search parses it) names this item. */
+export function isWorkItemNumberQuery(value: string, itemNumber: number): boolean {
+  const trimmed = value.trim()
+  return /^\d+$/.test(trimmed) && Number.parseInt(trimmed, 10) === itemNumber
+}
+
 export function shouldApplyWorkspaceSourceAutoName(args: {
   currentName: string
   lastAutoName: string
@@ -167,7 +173,7 @@ export function shouldApplyWorkspaceSourceAutoName(args: {
     !args.currentName.trim() ||
     args.currentName === args.lastAutoName ||
     isWorkItemLookupText(args.currentName) ||
-    (args.itemNumber !== undefined && args.currentName.trim() === String(args.itemNumber))
+    (args.itemNumber !== undefined && isWorkItemNumberQuery(args.currentName, args.itemNumber))
   )
 }
 
