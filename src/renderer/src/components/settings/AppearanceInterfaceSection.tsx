@@ -24,7 +24,6 @@ import {
   getTypographyEntries,
   getZoomEntries
 } from './appearance-search'
-import { pluginLanguagePackPickerLabel } from '../../../../shared/plugins/plugin-language-pack-picker-label'
 import {
   getUiLanguageChoiceLabel,
   SHOW_UI_LANGUAGE_SETTING,
@@ -139,7 +138,7 @@ export function AppearanceInterfaceSection({
                   ))}
                   {pluginLanguagePacks.map((pack) => (
                     <SelectItem key={pack.id} value={pack.id}>
-                      {pluginLanguagePackPickerLabel(pack)}
+                      {pack.displayName ?? `${pack.locale} — ${pack.pluginKey}`}
                     </SelectItem>
                   ))}
                 </SelectContent>
