@@ -18,6 +18,7 @@ import {
   admissibleHeapGib,
   planTypecheckBatches,
   resolveProjectCompiler,
+  resolveTypecheckCommand,
   parseTypecheckOptions,
   selectTypecheckCompiler,
   typecheckBatches,
@@ -134,7 +135,7 @@ describe('workspace package test typecheck', () => {
 })
 
 describe('local and CI compiler selection', () => {
-  it('selects the supported local compiler by default while CI explicitly selects Bun', () => {
+  it('defaults to automatic compiler selection while CI explicitly selects Bun', () => {
     expect(parseTypecheckOptions([]).compiler).toBe('auto')
     const manifest = JSON.parse(readFileSync(join(repoRoot, 'package.json'), 'utf8'))
     expect(manifest.scripts['typecheck:ci']).toContain('--compiler=bun')
@@ -202,7 +203,7 @@ describe('local and CI compiler selection', () => {
     expect(() => parseTypecheckOptions(['--project=config/tsconfig.json'])).toThrow()
   })
 
-  it('runs the resolved Bun and refuses to silently fall back when it is missing', () => {
+  it('selects the resolved Bun path and rejects a missing executable', () => {
     expect(
       selectTypecheckCompiler('bun', {
         root: repoRoot,
@@ -230,9 +231,25 @@ describe('local and CI compiler selection', () => {
     '--bun-concurrency=0',
     '--bun-threads=NaN',
     '--bun-concurrency=5',
+    '--checkers=0',
+    '--checkers=two',
     '--project'
   ])('rejects unsafe or unknown options: %s', (argument) => {
     expect(() => parseTypecheckOptions([argument])).toThrow()
+  })
+
+  it('passes a checker cap to the native compiler only when one is requested', () => {
+    const command = (checkers) =>
+      resolveTypecheckCommand('config/tsconfig.node.json', {
+        compiler: 'native',
+        checkers,
+        root: repoRoot
+      }).args
+    expect(command(parseTypecheckOptions(['--checkers=4']).checkers).slice(-2)).toEqual([
+      '--checkers',
+      '4'
+    ])
+    expect(command(parseTypecheckOptions([]).checkers)).not.toContain('--checkers')
   })
 
   it('bounds Bun project concurrency and reserves memory for overlapping checks', () => {

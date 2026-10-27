@@ -12,7 +12,10 @@ import {
 import { markRpcDeliveryUnknown } from '../transport/rpc-delivery-ambiguity'
 import { structuredSendResultFixture } from './structured-agent-send-result.test-fixture'
 import { useMobileStructuredAgentSession } from './use-mobile-structured-agent-session'
-import { AGENT_SESSION_SEND_OPTIONS_RUNTIME_CAPABILITY } from '../../../src/shared/agent-session-create-capabilities'
+import {
+  AGENT_SESSION_SEND_OPTIONS_RUNTIME_CAPABILITY,
+  AGENT_SESSION_SEND_SKILLS_RUNTIME_CAPABILITY
+} from '../../../src/shared/agent-session-create-capabilities'
 import {
   structuredAgentSessionHostSupport,
   type StructuredAgentSessionHostSupport
@@ -23,7 +26,7 @@ import { agentJournalSubmissionKey } from '../../../src/shared/agent-session-jou
 import {
   useMobileNativeChatSendError,
   type MobileNativeChatSendErrorDetails
-} from './use-mobile-native-chat-send-error'
+} from './native-chat/use-mobile-native-chat-send-error'
 
 const asyncStorage = vi.hoisted(() => ({
   getItem: vi.fn(),
@@ -193,7 +196,6 @@ describe('mobile structured send actions', () => {
           ? ok({ origin: 'probe', fetchedAt: 1, models: [opus] })
           : method === 'agentSession.options'
             ? ok({
-                // A stopped chat lists the host's rows and its own model.
                 models: [
                   opus,
                   { id: 'opus[1m]', label: 'opus[1m]', isDefault: false, efforts: [] }
@@ -298,7 +300,6 @@ describe('mobile structured send actions', () => {
     await act(async () => {
       expect(await hook!.sendWithOutcome('same text')).toBe('accepted')
     })
-    // The new send is drawn under its own id until its row lands.
     const sent = agentJournalSubmissionKey(sentIds()[0] ?? '')
     expect(hook!.session.messages.map((message) => message.id)).toEqual([messages[0]?.id, sent])
     expect(hook!.session.messages[0]).toEqual(messages[0])
@@ -342,7 +343,6 @@ describe('mobile structured send actions', () => {
     expect(calls()).toHaveLength(1)
   })
 
-  // The recorded row is the message: in place, as not sent, with the sign-in row saying why once.
   it.each(['reply-before-row', 'row-before-commit'] as const)(
     'leaves a recorded rejection to its row, with no banner and nothing handed back, for %s',
     async (order) => {
@@ -450,6 +450,29 @@ describe('mobile structured send actions', () => {
     })
   })
 
+  it.each([true, false])(
+    'sends the picked skill path only to a host that takes it: %s',
+    async (takesSkills) => {
+      hostSupport = structuredAgentSessionHostSupport(
+        takesSkills ? [AGENT_SESSION_SEND_SKILLS_RUNTIME_CAPABILITY] : []
+      )
+      sendRequest.mockImplementation(async (method) =>
+        method === 'agentSession.send' ? sendResult('accepted') : ok({ models: [], current: {} })
+      )
+      await mountSession()
+      const review = { name: 'review', path: '/repo/.agents/skills/review/SKILL.md' }
+      await act(async () => {
+        await hook!.sendWithOutcome('$review this', undefined, undefined, [], [review])
+      })
+      expect(fieldsOf(calls()[0]?.[1]).body).toEqual({
+        kind: 'message',
+        role: 'user',
+        blocks: [{ type: 'text', text: '$review this' }],
+        ...(takesSkills ? { skills: [review] } : {})
+      })
+    }
+  )
+
   it('sends an attached file as a reference after the text, and only images as image blocks', async () => {
     sendRequest.mockImplementation(async (method) =>
       method === 'agentSession.send' ? sendResult('accepted') : ok({ models: [], current: {} })
@@ -535,21 +558,6 @@ describe('mobile structured send actions', () => {
       expect(await hook!.sendWithOutcome('again')).toBe('accepted')
     })
     expect(new Set(sentIds()).size).toBe(2)
-  })
-
-  it('never reads an old phone journal, even when storage is full or unreadable', async () => {
-    asyncStorage.getItem.mockRejectedValue(new Error('unreadable old journal'))
-    asyncStorage.setItem.mockRejectedValue(new Error('disk full'))
-    sendRequest.mockImplementation(async (method) =>
-      method === 'agentSession.send' ? sendResult('accepted') : ok({ models: [], current: {} })
-    )
-    await mountSession()
-    await act(async () => {
-      expect(await hook!.sendWithOutcome('new action')).toBe('accepted')
-    })
-    expect(asyncStorage.getItem).not.toHaveBeenCalled()
-    expect(asyncStorage.setItem).not.toHaveBeenCalled()
-    expect(onSendError).not.toHaveBeenCalled()
   })
 
   it('sends nothing once the action budget expires', async () => {

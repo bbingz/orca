@@ -13,6 +13,12 @@ vi.mock('@/lib/app-keyboard-router', () => ({
     window.removeEventListener(type, handler, { capture: true })
 }))
 
+vi.mock('@/lib/agent-session/structured-agent-session-busy', async () => ({
+  admitStructuredAgentSession: (
+    await import('@/store/slices/store-session-test-harness')
+  ).admissionFromBusy(() => false)
+}))
+
 vi.mock('zustand/react/shallow', () => ({
   // Why: zustand resolves the real react (unmocked in node_modules); the memo wrapper is inert here.
   useShallow: (selector: unknown) => selector
@@ -91,8 +97,7 @@ vi.mock('@/components/contextual-tours/use-contextual-tour', async () => {
 vi.mock('@/components/ui/dialog', async () => {
   return (await import('./floating-terminal-panel-component-stubs')).createDialogModule()
 })
-// Why: the panel runs as a plain function here, so the real confirmation dialog's useContext has
-// no dispatcher; confirm immediately so bulk-close assertions still run right after the click.
+// The panel is probed without a React dispatcher; confirm immediately to keep bulk-close assertions synchronous.
 vi.mock('@/components/use-bulk-tab-close-confirmation', () => ({
   useBulkTabCloseConfirmation:
     () => (_scope: string, selectTabIds: () => string[], closeTabs: (tabIds: string[]) => void) => {
