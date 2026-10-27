@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process'
 import type * as ChildProcess from 'node:child_process'
+import { quoteWindowsArgument } from '@orca/process-host/windows-command-line'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   cancelGenerateCommitMessageLocal,
@@ -70,22 +71,27 @@ describe('generateCommitMessageFromContext on the Windows direct-child path', ()
   }
   const local = { kind: 'local' as const, cwd: '/repo', env: { ...process.env } }
 
-  it('truncates the diff so an Antigravity pull-request prompt fits the Windows command line', async () => {
-    await withPlatform('win32', async () => {
-      await generatePullRequestFieldsFromContext(
-        pullRequestContext,
-        // Settings always resolve an action template; this is the default one.
-        { agentId: 'antigravity', model: 'default', commandInputTemplate: '{basePrompt}' },
-        local
-      )
+  it.each(['plain', 'quote-heavy'])(
+    'fits a %s jcode pull-request diff to the quoted Windows command line',
+    async (content) => {
+      await withPlatform('win32', async () => {
+        await generatePullRequestFieldsFromContext(
+          {
+            ...pullRequestContext,
+            patch: content === 'quote-heavy' ? largePatch.replaceAll('x', '"') : largePatch
+          },
+          // Settings always resolve an action template; this is the default one.
+          { agentId: 'jcode', model: 'default', commandInputTemplate: '{basePrompt}' },
+          local
+        )
 
-      expect(spawnMock).toHaveBeenCalledTimes(1)
-      const argv = spawnedAgentArgv(spawnMock.mock.calls[0]).map(String)
-      const units = argv.reduce((total, arg) => total + arg.length + 3, 0)
-      expect(units).toBeLessThanOrEqual(30_000)
-      expect(argv.join(' ')).toContain('diff truncated')
-    })
-  })
+        expect(spawnMock).toHaveBeenCalledTimes(1)
+        const argv = spawnedAgentArgv(spawnMock.mock.calls[0]).map(String)
+        expect(argv.map(quoteWindowsArgument).join(' ').length).toBeLessThanOrEqual(30_000)
+        expect(argv.join(' ')).toContain('diff truncated')
+      })
+    }
+  )
 
   it('truncates a multi-byte diff so a jcode commit prompt fits the Linux single-argument cap', async () => {
     await withPlatform('linux', async () => {
@@ -113,7 +119,7 @@ describe('generateCommitMessageFromContext on the Windows direct-child path', ()
     await withPlatform('win32', async () => {
       const pending = generatePullRequestFieldsFromContext(
         pullRequestContext,
-        { agentId: 'antigravity', model: 'default' },
+        { agentId: 'jcode', model: 'default' },
         { ...local, wslDistro: 'Ubuntu' }
       )
 

@@ -53,7 +53,11 @@ function fitPromptToLocalCommandLine(
 ): string {
   const prompt = build()
   // The WSL launcher re-wraps argv in a login-shell script, so this plan's size does not bound it; keep the guard's verdict.
-  if (target.kind !== 'local' || target.wslDistro) {
+  if (
+    target.kind !== 'local' ||
+    target.wslDistro ||
+    (process.platform !== 'win32' && process.platform !== 'linux')
+  ) {
     return prompt
   }
   const fits = (candidate: string): boolean => {
@@ -66,8 +70,12 @@ function fitPromptToLocalCommandLine(
   if (fits(prompt)) {
     return prompt
   }
-  let best: string | null = null
-  let low = 0
+  const minimum = build(0)
+  if (!fits(minimum)) {
+    return prompt
+  }
+  let best = minimum
+  let low = 1
   let high = STAGED_DIFF_BYTE_BUDGET
   while (low <= high) {
     const budget = Math.floor((low + high) / 2)
@@ -79,8 +87,7 @@ function fitPromptToLocalCommandLine(
       high = budget - 1
     }
   }
-  // Even an empty patch is too large: keep the full prompt so the pre-spawn guard reports it.
-  return best ?? prompt
+  return best
 }
 
 export async function generateCommitMessage(input: {
