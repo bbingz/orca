@@ -44,8 +44,12 @@ describe('DashboardPopoutRoot', () => {
     })
   })
 
+  const initialKeybindings = useAppStore.getState().keybindings
+
   afterEach(() => {
     cleanup()
+    vi.restoreAllMocks()
+    useAppStore.setState({ keybindings: initialKeybindings })
   })
 
   // Without an App shell, these hooks alone translate menu IPC for preview ownership listeners.
