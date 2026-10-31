@@ -19,9 +19,8 @@ async function runNumstat(
 ): Promise<Map<string, GitLineStats> | null> {
   try {
     const area = cached ? 'staged' : 'unstaged'
-    const detectRenames = entries.some(
-      (entry) => entry.area === area && (entry.status === 'renamed' || entry.status === 'copied')
-    )
+    const detectCopies = entries.some((entry) => entry.area === area && entry.status === 'copied')
+    const detectRenames = entries.some((entry) => entry.area === area && entry.status === 'renamed')
     const { stdout } = await gitExecFileAsync(
       [
         '-c',
@@ -32,14 +31,29 @@ async function runNumstat(
         '-z',
         ...(cached ? ['--cached'] : []),
         '--numstat',
-        detectRenames ? '-M' : '--no-renames'
+        detectCopies ? '-C' : detectRenames ? '-M' : '--no-renames'
       ],
       {
         ...gitReadOptionsForWorktree(worktreePath, options),
         env: gitOptionalLocksDisabledEnv()
       }
     )
-    return parseNumstat(stdout)
+    const expectedSources = new Map(
+      entries
+        .filter(
+          (entry) =>
+            entry.area === area && (entry.status === 'copied' || entry.status === 'renamed')
+        )
+        .map((entry) => [entry.path, entry.oldPath])
+    )
+    let compatible = true
+    const stats = parseNumstat(stdout, (source, destination) => {
+      // Stat-dirty unchanged files can be copy sources for diff but not status.
+      if (detectCopies && expectedSources.get(destination) !== source) {
+        compatible = false
+      }
+    })
+    return compatible ? stats : null
   } catch (error) {
     // Propagate cancellation; ordinary numstat failures may degrade to uncounted rows.
     if (options.signal?.aborted) {
