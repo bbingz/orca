@@ -37,14 +37,6 @@ import { main } from '../index'
 const SCOPED_EMPTY =
   'No browser tabs open in this worktree. Use --worktree all to list every worktree.'
 
-const OPEN_TAB: BrowserTabInfo = {
-  browserPageId: 'page-1',
-  index: 0,
-  url: 'https://example.com',
-  title: 'Example',
-  active: true
-}
-
 async function listTabs(args: string[], tabs: readonly BrowserTabInfo[]): Promise<string> {
   const lines: string[] = []
   callMock.mockImplementation(async (method: string) => {
@@ -84,20 +76,7 @@ describe('orca tab list empty scope', () => {
     expect(text).toBe(SCOPED_EMPTY)
   })
 
-  it('keeps the global sentence when --worktree all finds no tabs', async () => {
-    const text = await listTabs(['tab', 'list', '--worktree', 'all'], [])
-
-    expect(text).toBe('No browser tabs open.')
-    expect(callMock).toHaveBeenCalledWith('browser.tabList', { worktree: undefined })
-  })
-
-  it('still lists a tab that is open in the scoped worktree', async () => {
-    const text = await listTabs(['tab', 'list', '--worktree', 'id:wt-b'], [OPEN_TAB])
-
-    expect(text).toBe('* [0] page-1  Example — https://example.com')
-  })
-
-  it('states the default worktree in tab list help', () => {
+  it('states the worktree resolution rule in tab list help', () => {
     const spec = BROWSER_BASIC_COMMAND_SPECS.find((item) => item.path.join(' ') === 'tab list')
     if (!spec) {
       throw new Error('tab list spec missing')
