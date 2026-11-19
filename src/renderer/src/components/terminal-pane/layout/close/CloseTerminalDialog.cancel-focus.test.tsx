@@ -74,3 +74,41 @@ it('returns focus to the active terminal pane when the close dialog is cancelled
   await flushFocusFrames()
   expect(document.activeElement).toBe(helper)
 })
+
+function RejectedActionDialog({ action }: { action: 'stop' | 'sleep' }): React.JSX.Element {
+  const [open, setOpen] = useState(true)
+  return (
+    <CloseTerminalDialog
+      open={open}
+      {...(action === 'sleep' ? { onSleepInstead: () => false } : {})}
+      onCancel={() => setOpen(false)}
+      onConfirm={() => false}
+    />
+  )
+}
+
+it('returns focus when cancel follows a stop that leaves the dialog open', async () => {
+  const helper = mountActiveLeaf()
+  render(<RejectedActionDialog action="stop" />)
+  await act(async () => {
+    screen.getByRole('button', { name: 'Stop and close' }).click()
+  })
+  await act(async () => {
+    screen.getByRole('button', { name: 'Cancel' }).click()
+  })
+  await flushFocusFrames()
+  expect(document.activeElement).toBe(helper)
+})
+
+it('returns focus when cancel follows a sleep that leaves the dialog open', async () => {
+  const helper = mountActiveLeaf()
+  render(<RejectedActionDialog action="sleep" />)
+  await act(async () => {
+    screen.getByRole('button', { name: 'Sleep workspace instead' }).click()
+  })
+  await act(async () => {
+    screen.getByRole('button', { name: 'Cancel' }).click()
+  })
+  await flushFocusFrames()
+  expect(document.activeElement).toBe(helper)
+})

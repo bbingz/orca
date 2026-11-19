@@ -21,6 +21,13 @@ async function sleepInstead(worktreeId: string, terminalTabId: string): Promise<
   await runSleepWorktree(worktreeId)
 }
 
+function runningCloseDialogStillOpen(): boolean {
+  return (
+    useRunningTerminalCloseConfirmStore.getState().runningTerminalCloseConfirm !== null &&
+    useAppStore.getState().pinnedTabCloseConfirm === null
+  )
+}
+
 /** Store-driven running-process confirmation lets tab/group/floating closes share the pane keyboard guard outside React context. */
 export default function RunningTerminalCloseDialog(): React.JSX.Element {
   const request = useRunningTerminalCloseConfirmStore((state) => state.runningTerminalCloseConfirm)
@@ -56,6 +63,7 @@ export default function RunningTerminalCloseDialog(): React.JSX.Element {
               if (dismissClose()) {
                 void sleepInstead(worktreeId, request.terminalTabId)
               }
+              return runningCloseDialogStillOpen() ? false : undefined
             }
           }
         : {})}
@@ -65,9 +73,10 @@ export default function RunningTerminalCloseDialog(): React.JSX.Element {
           void updateSettings({ skipCloseTerminalWithRunningProcessConfirm: true })
           // Why: the user just opted out of this prompt; a queued one must not still appear.
           confirmAllCloses()
-          return
+        } else {
+          confirmClose()
         }
-        confirmClose()
+        return runningCloseDialogStillOpen() ? false : undefined
       }}
     />
   )

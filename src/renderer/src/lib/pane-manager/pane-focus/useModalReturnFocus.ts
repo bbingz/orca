@@ -20,6 +20,7 @@ function isRestorableFocusedElement(element: HTMLElement | null): element is HTM
 export function useModalReturnFocus(visible: boolean): {
   captureReturnFocus: () => void
   skipReturnFocus: () => void
+  clearReturnFocusSkip: () => void
 } {
   const capturedRef = useRef<ModalReturnFocusSurface | null>(null)
   const capturedElementRef = useRef<HTMLElement | null>(null)
@@ -181,5 +182,9 @@ export function useModalReturnFocus(visible: boolean): {
     skipRef.current = true
   }, [])
 
-  return { captureReturnFocus, skipReturnFocus }
+  const clearReturnFocusSkip = useCallback((): void => {
+    skipRef.current = false
+  }, [])
+
+  return { captureReturnFocus, skipReturnFocus, clearReturnFocusSkip }
 }

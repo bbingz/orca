@@ -30,15 +30,15 @@ export default function CloseTerminalDialog({
   /** Names the workspace in a terminal agent's title. */
   workspaceName?: string
   /** Offered only where sleeping keeps the agent's session resumable. */
-  onSleepInstead?: () => void
+  onSleepInstead?: () => boolean | void
   /** Changing queued subject clears the previous tab’s opt-out without reopening the dialog. */
   subjectKey?: string
   onCancel: () => void
-  onConfirm: (dontAskAgain: boolean) => void
+  onConfirm: (dontAskAgain: boolean) => boolean | void
 }): React.JSX.Element {
   const checkboxId = useId()
   // Why: this dialog has no Radix trigger, so dismiss would leave focus on body and the next close chord closes the tab.
-  const { skipReturnFocus } = useModalReturnFocus(open)
+  const { clearReturnFocusSkip, skipReturnFocus } = useModalReturnFocus(open)
   const [dontAskAgain, setDontAskAgain] = useState(false)
   const [previousOpen, setPreviousOpen] = useState(open)
   const [previousSubjectKey, setPreviousSubjectKey] = useState(subjectKey)
@@ -77,7 +77,10 @@ export default function CloseTerminalDialog({
               ? () => {
                   // Sleep replaces the surface, so a queued terminal focus would steal it back.
                   skipReturnFocus()
-                  onSleepInstead()
+                  // A rejected sleep leaves this prompt up; the later Cancel must still restore focus.
+                  if (onSleepInstead() === false) {
+                    clearReturnFocusSkip()
+                  }
                 }
               : undefined
           }
@@ -88,7 +91,10 @@ export default function CloseTerminalDialog({
           onConfirm={(dontAskAgainChoice) => {
             // Stop closes the pane or tab and focuses whatever remains.
             skipReturnFocus()
-            onConfirm(dontAskAgainChoice)
+            // A guard rejection or a queued next prompt keeps the dialog open.
+            if (onConfirm(dontAskAgainChoice) === false) {
+              clearReturnFocusSkip()
+            }
           }}
         />
       </DialogContent>
@@ -109,12 +115,12 @@ function CloseTerminalDialogBody({
 }: {
   copyKind: CloseTerminalDialogCopyKind
   workspaceName?: string
-  onSleepInstead?: () => void
+  onSleepInstead?: () => boolean | void
   checkboxId: string
   dontAskAgain: boolean
   setDontAskAgain: (value: boolean) => void
   onCancel: () => void
-  onConfirm: (dontAskAgain: boolean) => void
+  onConfirm: (dontAskAgain: boolean) => boolean | void
 }): React.JSX.Element {
   const t = useTranslate()
   const isAgent = copyKind !== 'command'

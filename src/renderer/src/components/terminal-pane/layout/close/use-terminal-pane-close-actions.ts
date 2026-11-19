@@ -232,9 +232,9 @@ export function useTerminalPaneCloseActions(controller: TerminalPaneBindingContr
   )
   const { handleSearchSelectedText } = useTerminalSelectionSearch()
   const handleConfirmClose = useCallback(
-    (dontAskAgain: boolean) => {
+    (dontAskAgain: boolean): boolean | void => {
       if (pendingCloseConfirmation === null || confirmedCloseRef.current === null) {
-        return
+        return false
       }
       const confirmedClose = confirmedCloseRef.current
       confirmedCloseRef.current = null
