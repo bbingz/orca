@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
 import { useTranslate } from '@/i18n/use-translate'
+import { useModalReturnFocus } from '@/lib/pane-manager/pane-focus/useModalReturnFocus'
 
 export type CloseTerminalDialogCopyKind = 'command' | 'agent' | 'chat-agent'
 
@@ -36,6 +37,8 @@ export default function CloseTerminalDialog({
   onConfirm: (dontAskAgain: boolean) => void
 }): React.JSX.Element {
   const checkboxId = useId()
+  // Why: this dialog has no Radix trigger, so dismiss would leave focus on body and the next close chord closes the tab.
+  const { skipReturnFocus } = useModalReturnFocus(open)
   const [dontAskAgain, setDontAskAgain] = useState(false)
   const [previousOpen, setPreviousOpen] = useState(open)
   const [previousSubjectKey, setPreviousSubjectKey] = useState(subjectKey)
@@ -69,12 +72,24 @@ export default function CloseTerminalDialog({
         <CloseTerminalDialogBody
           copyKind={copyKind}
           workspaceName={workspaceName}
-          onSleepInstead={onSleepInstead}
+          onSleepInstead={
+            onSleepInstead
+              ? () => {
+                  // Sleep replaces the surface, so a queued terminal focus would steal it back.
+                  skipReturnFocus()
+                  onSleepInstead()
+                }
+              : undefined
+          }
           checkboxId={checkboxId}
           dontAskAgain={dontAskAgain}
           setDontAskAgain={setDontAskAgain}
           onCancel={onCancel}
-          onConfirm={onConfirm}
+          onConfirm={(dontAskAgainChoice) => {
+            // Stop closes the pane or tab and focuses whatever remains.
+            skipReturnFocus()
+            onConfirm(dontAskAgainChoice)
+          }}
         />
       </DialogContent>
     </Dialog>
