@@ -1,79 +1,98 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { BrowserTabInfo } from '../../shared/browser/runtime/runtime-browser-contracts'
-import type { RuntimeClient } from '../runtime/client'
-import { okFixture } from '../runtime/fixtures/runtime-rpc-fixtures'
 import { formatCommandHelp } from '../discovery/help'
+import { okFixture } from '../runtime/fixtures/runtime-rpc-fixtures'
 import { BROWSER_BASIC_COMMAND_SPECS } from '../specs/browser-basic'
-import { BROWSER_TAB_HANDLERS } from './browser-tab'
+
+const { callMock, runtimeClientConstructorMock, serveOrcaAppMock, getDefaultUserDataPathMock } =
+  vi.hoisted(() => ({
+    callMock: vi.fn(),
+    runtimeClientConstructorMock: vi.fn(),
+    serveOrcaAppMock: vi.fn(),
+    getDefaultUserDataPathMock: vi.fn(() => '/tmp/orca-user-data')
+  }))
+
+vi.mock('../runtime/client', async () => {
+  const { createRuntimeClientModuleMock } = await import('../index-test-harness.js')
+  return createRuntimeClientModuleMock({
+    callMock,
+    runtimeClientConstructorMock,
+    serveOrcaAppMock,
+    getDefaultUserDataPathMock
+  })
+})
+
+vi.mock('../runtime/launch', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  serveOrcaApp: serveOrcaAppMock
+}))
+
+vi.mock('../runtime/profile/metadata', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  getDefaultUserDataPath: getDefaultUserDataPathMock
+}))
+
+import { main } from '../index'
 
 const SCOPED_EMPTY =
   'No browser tabs open in this worktree. Use --worktree all to list every worktree.'
 
-// SAFETY: tab list reads only call() and isRemote; an id: selector does not list worktrees.
-function tabListClient(tabs: readonly BrowserTabInfo[]): RuntimeClient {
-  return {
-    isRemote: false,
-    call: vi.fn(async (method: string) => {
-      if (method !== 'browser.tabList') {
-        throw new Error(`unexpected ${method}`)
-      }
-      return okFixture('req_tab_list', { tabs })
-    })
-  } as RuntimeClient
+const OPEN_TAB: BrowserTabInfo = {
+  browserPageId: 'page-1',
+  index: 0,
+  url: 'https://example.com',
+  title: 'Example',
+  active: true
 }
 
-async function listTabs(
-  flags: Map<string, string | boolean>,
-  tabs: readonly BrowserTabInfo[]
-): Promise<string> {
+async function listTabs(args: string[], tabs: readonly BrowserTabInfo[]): Promise<string> {
   const lines: string[] = []
+  callMock.mockImplementation(async (method: string) => {
+    if (method !== 'browser.tabList') {
+      throw new Error(`unexpected ${method}`)
+    }
+    return okFixture('req_tab_list', { tabs })
+  })
   vi.spyOn(console, 'log').mockImplementation((line?: unknown) => {
     lines.push(String(line))
   })
-  await BROWSER_TAB_HANDLERS['tab list']({
-    flags,
-    client: tabListClient(tabs),
-    cwd: '/tmp/wt-b',
-    json: false
-  })
+  await main(args, '/tmp/wt-b')
   return lines.join('\n')
 }
 
 describe('orca tab list empty scope', () => {
+  beforeEach(() => {
+    callMock.mockReset()
+    process.exitCode = undefined
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    process.exitCode = undefined
+  })
+
   it('names the worktree when that worktree has no tabs', async () => {
-    const text = await listTabs(new Map([['worktree', 'id:wt-b']]), [])
+    const text = await listTabs(['tab', 'list', '--worktree', 'id:wt-b'], [])
 
     expect(text).toBe(SCOPED_EMPTY)
+    expect(callMock).toHaveBeenCalledWith('browser.tabList', { worktree: 'id:wt-b' })
   })
 
   it('names the worktree when --show-profile is set and that worktree has no tabs', async () => {
-    const text = await listTabs(
-      new Map<string, string | boolean>([
-        ['worktree', 'id:wt-b'],
-        ['show-profile', true]
-      ]),
-      []
-    )
+    const text = await listTabs(['tab', 'list', '--worktree', 'id:wt-b', '--show-profile'], [])
 
     expect(text).toBe(SCOPED_EMPTY)
   })
 
   it('keeps the global sentence when --worktree all finds no tabs', async () => {
-    const text = await listTabs(new Map([['worktree', 'all']]), [])
+    const text = await listTabs(['tab', 'list', '--worktree', 'all'], [])
 
     expect(text).toBe('No browser tabs open.')
+    expect(callMock).toHaveBeenCalledWith('browser.tabList', { worktree: undefined })
   })
 
   it('still lists a tab that is open in the scoped worktree', async () => {
-    const text = await listTabs(new Map([['worktree', 'id:wt-b']]), [
-      {
-        browserPageId: 'page-1',
-        index: 0,
-        url: 'https://example.com',
-        title: 'Example',
-        active: true
-      }
-    ])
+    const text = await listTabs(['tab', 'list', '--worktree', 'id:wt-b'], [OPEN_TAB])
 
     expect(text).toBe('* [0] page-1  Example — https://example.com')
   })
