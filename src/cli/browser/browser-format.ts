@@ -96,16 +96,20 @@ export function formatScreenshot(result: SavedBrowserScreenshot): string {
   return [`Screenshot saved to ${result.path} (${result.format})`, ...legend].join('\n')
 }
 
-export function formatTabList(result: BrowserTabListResult): string {
-  return formatTabListWithProfiles(result, false)
+export function formatTabList(result: BrowserTabListResult, scopedToWorktree = false): string {
+  return formatTabListWithProfiles(result, false, scopedToWorktree)
 }
 
 export function formatTabListWithProfiles(
   result: BrowserTabListResult,
-  showProfile: boolean
+  showProfile: boolean,
+  scopedToWorktree = false
 ): string {
   if (result.tabs.length === 0) {
-    return 'No browser tabs open.'
+    // An omitted worktree lists every tab; a selector lists one worktree.
+    return scopedToWorktree
+      ? 'No browser tabs open in this worktree. Use --worktree all to list every worktree.'
+      : 'No browser tabs open.'
   }
   return result.tabs
     .map((t) => {

@@ -39,8 +39,11 @@ export const BROWSER_TAB_HANDLERS: Record<string, CommandHandler> = {
     const worktree = await getBrowserWorktreeSelector(flags, cwd, client)
     const result = await client.call<BrowserTabListResult>('browser.tabList', { worktree })
     const showProfile = flags.has('show-profile')
+    const scopedToWorktree = worktree !== undefined
     printResult(result, json, (value) =>
-      showProfile ? formatTabListWithProfiles(value, true) : formatTabList(value)
+      showProfile
+        ? formatTabListWithProfiles(value, true, scopedToWorktree)
+        : formatTabList(value, scopedToWorktree)
     )
   },
   'tab show': async ({ flags, client, cwd, json }) => {
