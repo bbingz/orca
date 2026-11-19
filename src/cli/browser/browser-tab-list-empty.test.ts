@@ -104,7 +104,7 @@ describe('orca tab list empty scope', () => {
     }
 
     expect(formatCommandHelp(spec)).toContain(
-      'Defaults to the current worktree. Pass --worktree all to list every worktree.'
+      'Lists one worktree when Orca resolves one for this command, and every worktree when it does not. Pass --worktree all to list every worktree.'
     )
   })
 })
