@@ -221,7 +221,8 @@ export function NotesSendMenu<TNote extends DiffCommentDeliverySnapshot>({
                 triggerClassName
               )}
               disabled={!hasDeliverableNotes}
-              title={hasDeliverableNotes ? enabledSendTooltip(t) : disabledTitle}
+              // Why: enabled hover already opens the Radix tooltip; a disabled button never does.
+              title={hasDeliverableNotes ? undefined : disabledTitle}
               aria-label={
                 triggerLabel
                   ? t(
