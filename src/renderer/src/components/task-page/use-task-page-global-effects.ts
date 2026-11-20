@@ -4,6 +4,7 @@ import { addAppKeyListener, removeAppKeyListener } from '@/lib/keyboard/app-keyb
 export function useTaskPageGlobalEffects(model: TaskPageJiraSummaryGenerationModel) {
   const {
     closeTaskPage,
+    closeTaskDetailPage,
     activeModal,
     linearStatusContextKey,
     preflightStatusChecked,
@@ -28,12 +29,11 @@ export function useTaskPageGlobalEffects(model: TaskPageJiraSummaryGenerationMod
     newJiraIssueOpen
   } = model
   const githubTasksBusy = githubListPending || tasksRefreshing || tasksFiltering
+  const inPageDetailOpen = Boolean(dialogWorkItem || selectedLinearIssue)
   useEffect(() => {
-    // Why: when a modal is open, let it own Esc dismissal.
+    // Why: sheets and creation modals own Esc; in-page GitHub and Linear details step back.
     if (
-      dialogWorkItem ||
       selectedJiraIssue ||
-      selectedLinearIssue ||
       newIssueOpen ||
       newLinearIssueOpen ||
       newJiraIssueOpen ||
@@ -71,18 +71,22 @@ export function useTaskPageGlobalEffects(model: TaskPageJiraSummaryGenerationMod
         return
       }
       event.preventDefault()
+      if (inPageDetailOpen) {
+        closeTaskDetailPage()
+        return
+      }
       closeTaskPage()
     }
     addAppKeyListener('keydown', onKeyDown)
     return () => removeAppKeyListener('keydown', onKeyDown)
   }, [
     activeModal,
+    closeTaskDetailPage,
     closeTaskPage,
-    dialogWorkItem,
+    inPageDetailOpen,
     newIssueOpen,
     newLinearIssueOpen,
     newJiraIssueOpen,
-    selectedLinearIssue,
     selectedJiraIssue
   ])
   useEffect(() => {
