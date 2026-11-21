@@ -157,6 +157,32 @@ describe('terminal path helpers', () => {
     expect(osc).toBeNull()
   })
 
+  it.each([
+    ['D:/tmp/test.md#L11', 'D:/tmp/test.md', 11],
+    ['D:/tmp/test.md#L11-13', 'D:/tmp/test.md', 11],
+    ['D:/tmp/test.md#L11-L13', 'D:/tmp/test.md', 11]
+  ])('reads Windows OSC #L fragment %s as a line', (target, pathText, line) => {
+    const osc = classifyTerminalOscLinkTarget(target, {
+      windowsPathsFirst: true,
+      allowUncHost: true
+    })
+    expect(osc).toMatchObject({ kind: 'path', link: { pathText, line, column: null } })
+  })
+
+  it.each([
+    ['file:///D:/tmp/test.md#L11-13', 11],
+    ['file:///D:/tmp/test.md#L11-L13', 11]
+  ])('keeps the start line of file URL fragment %s', (target, line) => {
+    const osc = classifyTerminalOscLinkTarget(target, {
+      windowsPathsFirst: true,
+      allowUncHost: true
+    })
+    expect(osc).toMatchObject({
+      kind: 'file-url',
+      target: { filePath: 'D:/tmp/test.md', line, column: null }
+    })
+  })
+
   describe('plain-text file:// URIs', () => {
     it('does not also emit a bare-path link for the URI body', () => {
       const links = extractTerminalFileLinks('file:///Users/dev/orca/report.html')

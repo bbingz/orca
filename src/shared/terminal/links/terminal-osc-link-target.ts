@@ -1,6 +1,7 @@
 import { isWindowsAbsolutePathLike } from '../../file-access/cross-platform-path'
 import {
   resolveTerminalFileUrlTarget,
+  splitTerminalPathLineFragment,
   type TerminalFileUrlTarget
 } from './terminal-file-url-target'
 import { toParsedTerminalFileLink } from './terminal-file-link-detection-ranges'
@@ -24,10 +25,25 @@ export function classifyTerminalOscLinkTarget(
 ): TerminalOscLinkTarget | null {
   // Why: a hyperlink names its whole target, so the path is taken as written, never detected in it.
   const pathTarget = (): TerminalOscLinkTarget | null => {
-    const link = rawText.includes('://')
+    // Why: Windows hosts classify drive URIs before URL parsing, so #L never reaches the file-URL reader.
+    const fragment = splitTerminalPathLineFragment(rawText)
+    const link = fragment.pathText.includes('://')
       ? null
-      : toParsedTerminalFileLink({ text: rawText, startIndex: 0, endIndex: rawText.length })
-    return link ? { kind: 'path', link } : null
+      : toParsedTerminalFileLink({
+          text: fragment.pathText,
+          startIndex: 0,
+          endIndex: fragment.pathText.length
+        })
+    if (!link) {
+      return null
+    }
+    if (fragment.line === null || link.line !== null) {
+      return { kind: 'path', link }
+    }
+    return {
+      kind: 'path',
+      link: { ...link, line: fragment.line, column: fragment.column ?? link.column }
+    }
   }
   const windowsPath =
     options.windowsPathsFirst && isWindowsAbsolutePathLike(rawText) ? pathTarget() : null
