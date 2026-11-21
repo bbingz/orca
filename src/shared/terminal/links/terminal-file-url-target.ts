@@ -67,6 +67,12 @@ export function resolveTerminalFileUrlTarget(
 
   const hashTarget = parseFileUrlLineHash(parsed.hash)
   if (hashTarget) {
+    const fragment = parsed.hash.startsWith('#') ? parsed.hash.slice(1) : parsed.hash
+    // Why: a range used to miss this reader, so a :line already on the path stayed in force.
+    const trailing = fragment.includes('-') ? parseFilePathTrailingLineTarget(filePath) : null
+    if (trailing) {
+      return trailing
+    }
     return { filePath, line: hashTarget.line, column: hashTarget.column }
   }
 

@@ -161,13 +161,25 @@ describe('terminal path helpers', () => {
     ['D:/tmp/test.md#L11', 'D:/tmp/test.md', 11, null],
     ['D:/tmp/test.md#L11-13', 'D:/tmp/test.md', 11, null],
     ['D:/tmp/test.md#L11-L13', 'D:/tmp/test.md', 11, null],
-    ['D:/tmp/test.md#L11C2', 'D:/tmp/test.md', 11, 2]
+    ['D:/tmp/test.md#L11C2', 'D:/tmp/test.md', 11, 2],
+    ['D:/tmp/test.md:11#L20-L22', 'D:/tmp/test.md', 11, null]
   ])('reads Windows OSC #L fragment %s as a line', (target, pathText, line, column) => {
     const osc = classifyTerminalOscLinkTarget(target, {
       windowsPathsFirst: true,
       allowUncHost: true
     })
     expect(osc).toMatchObject({ kind: 'path', link: { pathText, line, column } })
+  })
+
+  it('keeps a file URL colon line when the fragment is a range', () => {
+    const osc = classifyTerminalOscLinkTarget('file:///D:/tmp/test.md:11#L20-L22', {
+      windowsPathsFirst: true,
+      allowUncHost: true
+    })
+    expect(osc).toMatchObject({
+      kind: 'file-url',
+      target: { filePath: 'D:/tmp/test.md', line: 11, column: null }
+    })
   })
 
   it.each([
