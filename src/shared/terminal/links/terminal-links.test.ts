@@ -158,28 +158,30 @@ describe('terminal path helpers', () => {
   })
 
   it.each([
-    ['D:/tmp/test.md#L11', 'D:/tmp/test.md', 11],
-    ['D:/tmp/test.md#L11-13', 'D:/tmp/test.md', 11],
-    ['D:/tmp/test.md#L11-L13', 'D:/tmp/test.md', 11]
-  ])('reads Windows OSC #L fragment %s as a line', (target, pathText, line) => {
+    ['D:/tmp/test.md#L11', 'D:/tmp/test.md', 11, null],
+    ['D:/tmp/test.md#L11-13', 'D:/tmp/test.md', 11, null],
+    ['D:/tmp/test.md#L11-L13', 'D:/tmp/test.md', 11, null],
+    ['D:/tmp/test.md#L11C2', 'D:/tmp/test.md', 11, 2]
+  ])('reads Windows OSC #L fragment %s as a line', (target, pathText, line, column) => {
     const osc = classifyTerminalOscLinkTarget(target, {
       windowsPathsFirst: true,
       allowUncHost: true
     })
-    expect(osc).toMatchObject({ kind: 'path', link: { pathText, line, column: null } })
+    expect(osc).toMatchObject({ kind: 'path', link: { pathText, line, column } })
   })
 
   it.each([
-    ['file:///D:/tmp/test.md#L11-13', 11],
-    ['file:///D:/tmp/test.md#L11-L13', 11]
-  ])('keeps the start line of file URL fragment %s', (target, line) => {
+    ['file:///D:/tmp/test.md#L11-13', 11, null],
+    ['file:///D:/tmp/test.md#L11-L13', 11, null],
+    ['file:///D:/tmp/test.md#L11C2-13', 11, 2]
+  ])('keeps the start line of file URL fragment %s', (target, line, column) => {
     const osc = classifyTerminalOscLinkTarget(target, {
       windowsPathsFirst: true,
       allowUncHost: true
     })
     expect(osc).toMatchObject({
       kind: 'file-url',
-      target: { filePath: 'D:/tmp/test.md', line, column: null }
+      target: { filePath: 'D:/tmp/test.md', line, column }
     })
   })
 
