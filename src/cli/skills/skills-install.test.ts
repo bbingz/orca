@@ -213,7 +213,7 @@ describe('orca skills install/update', () => {
   })
 
   it('rejects a saved server before installing on this machine', async () => {
-    const { createSkillMutationHandler } = await import('./bundled-skill-install-command')
+    const { createSkillMutationHandler } = await import('./bundled-skill-install-command.js')
     const handler = createSkillMutationHandler('install')
     const ctx: HandlerContext = {
       flags: new Map<string, string | boolean>([
