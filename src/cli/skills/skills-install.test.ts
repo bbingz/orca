@@ -52,6 +52,7 @@ vi.mock(
 )
 
 import type * as LocalHost from '../../main/skills/bundled-skill-install/bundled-skill-local-host'
+import type { HandlerContext } from '../dispatch/dispatch'
 import { main } from '../index'
 import {
   acquireSkillInstallLock,
@@ -208,6 +209,29 @@ describe('orca skills install/update', () => {
       process.platform === 'win32'
     )
     expect(await readdir(project)).toEqual(['.agents', '.claude'])
+    expect(await lstat(paths.shared).catch(() => null)).toBeNull()
+  })
+
+  it('rejects a saved server before installing on this machine', async () => {
+    const { createSkillMutationHandler } = await import('./bundled-skill-install-command')
+    const handler = createSkillMutationHandler('install')
+    const ctx: HandlerContext = {
+      flags: new Map<string, string | boolean>([
+        ['skill', NAME],
+        ['agent', 'universal'],
+        ['environment', 'fixture-server'],
+        ['json', true]
+      ]),
+      json: true,
+      cwd: paths.root,
+      get client(): HandlerContext['client'] {
+        throw new Error('skills install must not open a runtime client')
+      }
+    }
+
+    await expect(handler(ctx)).rejects.toThrow(
+      '`--environment` does not retarget orca skills install; it writes on the machine that runs it'
+    )
     expect(await lstat(paths.shared).catch(() => null)).toBeNull()
   })
 })

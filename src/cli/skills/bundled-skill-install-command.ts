@@ -1,6 +1,8 @@
 import { homedir } from 'node:os'
 import { realpath } from 'node:fs/promises'
 import type { CommandHandler } from '../dispatch/dispatch'
+import { rejectRemoteSelectionFlags } from '../dispatch/remote-selection-flag-rejection'
+import { isLocalEnvironmentSelector } from '../hosts/local-environment-selector'
 import { RuntimeClientError } from '../runtime/connection/types'
 import { getDefaultUserDataPath } from '../runtime/profile/metadata'
 import { getRepeatedStringFlag } from '../arguments/flags'
@@ -160,8 +162,24 @@ async function workspaceDirectory(): Promise<string> {
   return realpath(process.cwd())
 }
 
+function rejectNonlocalSkillMutationFlags(
+  flags: ReadonlyMap<string, string | boolean>,
+  verb: SkillMutationVerb
+): void {
+  const forwarded = new Map(flags)
+  // `--environment local` is this machine, which is the only place this command writes.
+  if (isLocalEnvironmentSelector(forwarded.get('environment'))) {
+    forwarded.delete('environment')
+  }
+  rejectRemoteSelectionFlags(
+    forwarded,
+    `orca skills ${verb}; it writes on the machine that runs it`
+  )
+}
+
 export function createSkillMutationHandler(verb: SkillMutationVerb): CommandHandler {
   return async ({ flags, json }) => {
+    rejectNonlocalSkillMutationFlags(flags, verb)
     const guides = await loadCanonicalGuides()
     const skillNames = resolveSelectedSkillNames(flags, guides)
     if (skillNames.length === 0) {
