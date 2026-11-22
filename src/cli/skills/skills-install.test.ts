@@ -213,4 +213,29 @@ describe('orca skills install/update', () => {
     expect(await readdir(project)).toEqual(['.agents', '.claude'])
     expect(await lstat(paths.shared).catch(() => null)).toBeNull()
   })
+
+  it.each(['install', 'update'])(
+    'refuses %s --environment <name> without looking it up or writing',
+    async (verb) => {
+      const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+      await run([verb, '--skill', NAME, '--agent', 'universal', '--environment', 'nope', '--json'])
+
+      expect(JSON.parse(String(log.mock.calls[0]?.[0]))).toMatchObject({
+        ok: false,
+        error: {
+          message: `\`--environment\` does not retarget orca skills ${verb}; it writes on the machine that runs it`,
+          data: { nextSteps: expect.arrayContaining(['Drop the flag to write on this machine.']) }
+        }
+      })
+      expect(process.exitCode).toBe(1)
+      expect(await lstat(paths.shared).catch(() => null)).toBeNull()
+    }
+  )
+
+  it('still installs on this machine for --environment local', async () => {
+    await run(['install', '--skill', NAME, '--agent', 'universal', '--environment', 'local'])
+
+    expect(await skillText(paths.shared)).toBe(NEW_TEXT)
+  })
 })
