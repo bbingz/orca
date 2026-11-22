@@ -40,7 +40,7 @@ async function run(argv: string[]): Promise<void> {
   const paths = COMMAND_SPECS.flatMap((spec) => specPaths(spec))
   const parsed = normalizeCommandPositionals(COMMAND_SPECS, parseArgs(argv, paths, COMMAND_SPECS))
   validateCommandAndFlags(COMMAND_SPECS, parsed)
-  // SAFETY: these cases return or throw before the handler reads the client.
+  // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: these cases return or throw before the handler reads the client.
   const client = { isRemote: false } as unknown as RuntimeClient
   const ctx: HandlerContext = {
     flags: parsed.flags,
