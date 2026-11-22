@@ -140,7 +140,13 @@ export function createPluginWorkerOrcaApi(input: {
         handler: Parameters<PluginWorkerOrcaApi['commands']['register']>[1]
       ) {
         tables.commands.set(commandId, handler)
-        return { dispose: () => void tables.commands.delete(commandId) }
+        return {
+          dispose: () => {
+            if (tables.commands.get(commandId) === handler) {
+              tables.commands.delete(commandId)
+            }
+          }
+        }
       }
     }),
     events: Object.freeze({
