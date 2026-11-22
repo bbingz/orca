@@ -26,6 +26,13 @@ describe('markdown preview HTML anchors', () => {
       'user-content-section'
     )
 
+    const prefixedSource = renderPreview(
+      '[Go to section](#user-content-section)\n\n<a id="user-content-section"></a>\n'
+    )
+    expect(findMarkdownPreviewAnchorElement(prefixedSource, 'user-content-section')?.id).toBe(
+      'user-content-user-content-section'
+    )
+
     const heading = renderPreview('[Go to section](#section)\n\n## Section\n')
     expect(findMarkdownPreviewAnchorElement(heading, 'section')?.id).toBe('section')
 

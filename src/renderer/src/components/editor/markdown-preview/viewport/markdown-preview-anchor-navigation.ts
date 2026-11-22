@@ -30,7 +30,8 @@ export function resolveMarkdownPreviewAnchorId(
     return decoded
   }
   const prefix = MARKDOWN_PREVIEW_HTML_ID_PREFIX
-  if (!decoded || !prefix || decoded.startsWith(prefix)) {
+  // The sanitizer always adds one prefix, including when the authored id already has it.
+  if (!decoded || !prefix) {
     return null
   }
   const prefixed = `${prefix}${decoded}`
