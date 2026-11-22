@@ -139,10 +139,13 @@ export function createPluginWorkerOrcaApi(input: {
         commandId: string,
         handler: Parameters<PluginWorkerOrcaApi['commands']['register']>[1]
       ) {
-        tables.commands.set(commandId, handler)
+        // Why: a second register of the same function is still a new owner.
+        const registered = (args: unknown, context: { signal: AbortSignal }) =>
+          handler(args, context)
+        tables.commands.set(commandId, registered)
         return {
           dispose: () => {
-            if (tables.commands.get(commandId) === handler) {
+            if (tables.commands.get(commandId) === registered) {
               tables.commands.delete(commandId)
             }
           }

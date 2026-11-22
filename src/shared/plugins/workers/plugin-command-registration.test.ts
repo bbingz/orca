@@ -33,4 +33,31 @@ describe('commands.register', () => {
       'command: the worker registered no "ping"'
     )
   })
+
+  it('keeps a command when the same function is registered again and the earlier disposable runs', async () => {
+    const handler = () => 'same'
+    let stale: { dispose(): void } | undefined
+    const mounted = await mountWorker(
+      {
+        default(orca: {
+          commands: {
+            register(id: string, command: () => string): { dispose(): void }
+          }
+        }) {
+          stale = orca.commands.register('ping', handler)
+          orca.commands.register('ping', handler)
+        }
+      },
+      {
+        host: createMockHost({}, []),
+        events: [],
+        commands: ['ping'],
+        hooks: []
+      }
+    )
+
+    expect(await mounted.command('ping')).toBe('same')
+    stale?.dispose()
+    expect(await mounted.command('ping')).toBe('same')
+  })
 })
