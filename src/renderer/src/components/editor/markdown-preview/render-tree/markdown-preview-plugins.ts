@@ -58,6 +58,9 @@ const markdownPreviewSanitizeSchema = {
   }
 }
 
+// Authored ids are prefixed by the sanitizer; heading slugs are not.
+export const MARKDOWN_PREVIEW_HTML_ID_PREFIX = markdownPreviewSanitizeSchema.clobberPrefix || ''
+
 type MarkdownPluginList = NonNullable<ReactMarkdownOptions['remarkPlugins']>
 export const MARKDOWN_REMARK_PLUGINS: MarkdownPluginList = [
   remarkGfm,

@@ -1,5 +1,6 @@
 import { elementScroll, type Virtualizer } from '@tanstack/react-virtual'
 import type { ProgrammaticScrollMarks } from '@/lib/list-interaction/virtualized-scrolling/programmatic-scroll-marks'
+import { MARKDOWN_PREVIEW_HTML_ID_PREFIX } from '../render-tree/markdown-preview-plugins'
 
 export function getMarkdownPreviewAnchorScrollTop(
   container: Pick<HTMLElement, 'getBoundingClientRect' | 'scrollTop'>,
@@ -18,6 +19,33 @@ export function decodeMarkdownPreviewAnchor(rawAnchor: string): string {
   } catch {
     return rawAnchor
   }
+}
+
+export function resolveMarkdownPreviewAnchorId(
+  rawAnchor: string,
+  hasId: (id: string) => boolean
+): string | null {
+  const decoded = decodeMarkdownPreviewAnchor(rawAnchor)
+  if (decoded && hasId(decoded)) {
+    return decoded
+  }
+  const prefix = MARKDOWN_PREVIEW_HTML_ID_PREFIX
+  if (!decoded || !prefix || decoded.startsWith(prefix)) {
+    return null
+  }
+  const prefixed = `${prefix}${decoded}`
+  return hasId(prefixed) ? prefixed : null
+}
+
+export function findMarkdownPreviewAnchorElement(
+  root: ParentNode,
+  rawAnchor: string
+): HTMLElement | null {
+  const nodes = [...root.querySelectorAll<HTMLElement>('[id]')]
+  const id = resolveMarkdownPreviewAnchorId(rawAnchor, (candidate) =>
+    nodes.some((node) => node.id === candidate)
+  )
+  return id ? (nodes.find((node) => node.id === id) ?? null) : null
 }
 
 export function scrollMarkdownPreviewVirtualizer(
