@@ -101,7 +101,7 @@ async function fetchOpenCodeGoUsageResponse(
       }
       await waitForUsageRetry(signal, TRANSIENT_RETRY_BACKOFF_MS)
       if (signal.aborted) {
-        return usageRequestFailed(error)
+        return usageRequestFailed(signal.reason instanceof Error ? signal.reason : error)
       }
     }
   }
