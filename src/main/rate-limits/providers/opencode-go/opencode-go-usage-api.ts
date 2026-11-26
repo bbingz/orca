@@ -11,6 +11,8 @@ import type { UsageRateLimitFailureKind } from '../../../../shared/agent-usage/r
 export const OPENCODE_GO_USAGE_API_URL = 'https://opencode.ai/zen/go/v1/usage'
 const API_TIMEOUT_MS = 15_000
 const MAX_ERROR_BODY_CHARS = 4_000
+const TRANSIENT_NETWORK_ATTEMPTS = 3
+const TRANSIENT_RETRY_BACKOFF_MS = 400
 
 /** Unauthorized/no-subscription are definitive key verdicts; failed means no usable answer. */
 export type OpenCodeGoUsageApiOutcome =
@@ -51,6 +53,61 @@ function classifyFailure(status: number, body: string): OpenCodeGoUsageApiOutcom
   return { kind: 'failed', message: `OpenCode Go usage request failed (${status})` }
 }
 
+function usageRequestFailed(error: unknown): OpenCodeGoUsageApiOutcome {
+  // Exception messages may embed the authenticated request; return a fixed prefix.
+  return {
+    kind: 'failed',
+    message: `OpenCode Go usage request failed (${error instanceof Error ? error.name : 'network error'})`,
+    failureKind: classifyThrownUsageRequestError(error)
+  }
+}
+
+function waitForUsageRetry(signal: AbortSignal, delayMs: number): Promise<void> {
+  if (signal.aborted) {
+    return Promise.resolve()
+  }
+  return new Promise((resolve) => {
+    const timer = setTimeout(resolve, delayMs)
+    signal.addEventListener(
+      'abort',
+      () => {
+        clearTimeout(timer)
+        resolve()
+      },
+      { once: true }
+    )
+  })
+}
+
+async function fetchOpenCodeGoUsageResponse(
+  apiKey: string,
+  signal: AbortSignal
+): Promise<Response | OpenCodeGoUsageApiOutcome> {
+  for (let attempt = 1; attempt <= TRANSIENT_NETWORK_ATTEMPTS; attempt++) {
+    try {
+      return await getMainHttpClient().fetch(OPENCODE_GO_USAGE_API_URL, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          Accept: 'application/json'
+        },
+        signal
+      })
+    } catch (error) {
+      const canRetry =
+        error instanceof TypeError && !signal.aborted && attempt < TRANSIENT_NETWORK_ATTEMPTS
+      if (!canRetry) {
+        return usageRequestFailed(error)
+      }
+      await waitForUsageRetry(signal, TRANSIENT_RETRY_BACKOFF_MS)
+      if (signal.aborted) {
+        return usageRequestFailed(error)
+      }
+    }
+  }
+  return usageRequestFailed(new TypeError('fetch failed'))
+}
+
 /** Fetch via the default Electron session for app-wide proxy handling; the key stays in Authorization, never logs/results/telemetry. */
 export async function fetchOpenCodeGoUsageWithApiKey(
   apiKey: string,
@@ -60,24 +117,14 @@ export async function fetchOpenCodeGoUsageWithApiKey(
     probeUrl: OPENCODE_GO_USAGE_API_URL
   }).catch(() => {})
 
-  let response: Response
-  try {
-    response = await getMainHttpClient().fetch(OPENCODE_GO_USAGE_API_URL, {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        Accept: 'application/json'
-      },
-      signal: abortSignalWithTimeout(signal, API_TIMEOUT_MS)
-    })
-  } catch (error) {
-    // Exception messages may embed the authenticated request; return a fixed prefix.
-    return {
-      kind: 'failed',
-      message: `OpenCode Go usage request failed (${error instanceof Error ? error.name : 'network error'})`,
-      failureKind: classifyThrownUsageRequestError(error)
-    }
+  const fetched = await fetchOpenCodeGoUsageResponse(
+    apiKey,
+    abortSignalWithTimeout(signal, API_TIMEOUT_MS)
+  )
+  if (!(fetched instanceof Response)) {
+    return fetched
   }
+  const response = fetched
 
   const body = await response.text().catch(() => '')
   if (!response.ok) {
