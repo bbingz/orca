@@ -28,6 +28,30 @@ function githubIdentityFromAvatar(
   return owner && name && rest.length === 0 ? { owner, repo: name } : null
 }
 
+// Identity keys keep hostname/path only. The clickable link still has to open the remote's own scheme and port.
+function httpRemoteWebUrl(remoteUrl: string): string | null {
+  const trimmed = remoteUrl.trim()
+  if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed)) {
+    return null
+  }
+  let parsed: URL
+  try {
+    parsed = new URL(trimmed)
+  } catch {
+    return null
+  }
+  const protocol = parsed.protocol.toLowerCase()
+  if (protocol !== 'http:' && protocol !== 'https:') {
+    return null
+  }
+  const path = parsed.pathname.replace(/^\/+/, '').replace(/\/+$/, '')
+  const withoutGit = path.endsWith('.git') ? path.slice(0, -4) : path
+  if (!parsed.host || !withoutGit) {
+    return null
+  }
+  return `${protocol}//${parsed.host}/${withoutGit}`
+}
+
 /** The checkout's own remote; a fork's parent is reported separately by the fork indicator. */
 export function getProjectRemoteDisplay(repo: RemoteRepo): ProjectRemoteDisplay | null {
   const github = getGitRemoteProviderIdentity(repo) ?? githubIdentityFromAvatar(repo)
@@ -42,9 +66,8 @@ export function getProjectRemoteDisplay(repo: RemoteRepo): ProjectRemoteDisplay 
       webUrl: buildGitHubRepoUrl(github)
     }
   }
-  const normalized = repo.gitRemoteIdentity?.remoteUrl
-    ? normalizeGitRemoteUrl(repo.gitRemoteIdentity.remoteUrl)
-    : null
+  const remoteUrl = repo.gitRemoteIdentity?.remoteUrl
+  const normalized = remoteUrl ? normalizeGitRemoteUrl(remoteUrl) : null
   if (!normalized) {
     return null
   }
@@ -58,6 +81,6 @@ export function getProjectRemoteDisplay(repo: RemoteRepo): ProjectRemoteDisplay 
     owner: null,
     name: null,
     host: host === 'gitlab.com' ? null : host,
-    webUrl: `https://${normalized}`
+    webUrl: (remoteUrl ? httpRemoteWebUrl(remoteUrl) : null) ?? `https://${normalized}`
   }
 }
