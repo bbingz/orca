@@ -27,4 +27,20 @@ describe('GitHub Enterprise web and API hosts', () => {
     expect(target).toEqual({ repository: apiRepository, type: 'pr', number: 93 })
     expect(target && matchesGitHubWorkItemTarget(item, target)).toBe(true)
   })
+
+  it('does not match another web host when the listed repository has no host', () => {
+    const item = {
+      url: 'https://ghe-b.example/acme/widgets/issues/93',
+      type: 'issue' as const,
+      number: 93,
+      apiRepository: { owner: 'acme', repo: 'widgets' }
+    }
+    expect(
+      matchesGitHubWorkItemTarget(item, {
+        repository: { owner: 'acme', repo: 'widgets' },
+        type: 'issue',
+        number: 93
+      })
+    ).toBe(false)
+  })
 })

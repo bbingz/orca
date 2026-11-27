@@ -1,4 +1,5 @@
 import type { GitHubRepositoryIdentity as OwnerRepo } from '../../../../shared/github/repositories/repository-identity'
+import { isDefaultGitHubHost } from '../../../../shared/github/repositories/repository-identity-key'
 import {
   authorFieldsFromUnknown,
   createdAtFromUnknown,
@@ -15,7 +16,7 @@ import {
 function listedApiRepository(
   source: OwnerRepo | null | undefined
 ): Pick<MainWorkItem, 'apiRepository'> {
-  if (!source?.owner || !source.repo) {
+  if (!source?.owner || !source.repo || isDefaultGitHubHost(source.host)) {
     return {}
   }
   return {

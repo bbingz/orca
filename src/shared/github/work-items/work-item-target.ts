@@ -1,6 +1,6 @@
 import type { GitHubRepositoryIdentity as GitHubOwnerRepo } from '../repositories/repository-identity'
 import type { GitHubWorkItem, GitHubWorkItemDetails } from './work-item-types'
-import { githubRepoIdentityKey } from '../repositories/repository-identity-key'
+import { githubRepoIdentityKey, isDefaultGitHubHost } from '../repositories/repository-identity-key'
 
 export type GitHubWorkItemTarget = {
   repository: GitHubOwnerRepo
@@ -43,8 +43,9 @@ export function matchesGitHubWorkItemTarget(
       return false
     }
     // html_url can name a GHES web host while the listed row keeps the API host.
+    // A missing host means github.com, so it cannot excuse a different URL host.
     const listed = item.prRepo ?? item.apiRepository
-    if (listed) {
+    if (listed && !isDefaultGitHubHost(listed.host)) {
       return (
         sameGitHubSlug(listed, target.repository) &&
         githubRepoIdentityKey(listed) === githubRepoIdentityKey(target.repository)

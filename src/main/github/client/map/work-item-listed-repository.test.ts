@@ -20,4 +20,18 @@ describe('mapIssueWorkItem', () => {
       repo: 'widgets'
     })
   })
+
+  it('does not stamp a hostless repository over the URL host', () => {
+    const item = mapIssueWorkItem(
+      {
+        number: 93,
+        title: 'Split host',
+        state: 'open',
+        html_url: 'https://ghe-b.example/acme/widgets/issues/93',
+        updated_at: '2026-11-27T15:49:56Z'
+      },
+      { owner: 'acme', repo: 'widgets' }
+    )
+    expect(item.apiRepository).toBeUndefined()
+  })
 })
