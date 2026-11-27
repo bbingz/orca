@@ -12,7 +12,25 @@ import {
   deriveWorkItemCheckSummary,
   type MainWorkItem
 } from './work-item-field-coercion'
-export function mapIssueWorkItem(item: Record<string, unknown>): MainWorkItem {
+function listedApiRepository(
+  source: OwnerRepo | null | undefined
+): Pick<MainWorkItem, 'apiRepository'> {
+  if (!source?.owner || !source.repo) {
+    return {}
+  }
+  return {
+    apiRepository: {
+      owner: source.owner,
+      repo: source.repo,
+      ...(source.host ? { host: source.host } : {})
+    }
+  }
+}
+
+export function mapIssueWorkItem(
+  item: Record<string, unknown>,
+  sourceRepository: OwnerRepo | null = null
+): MainWorkItem {
   return {
     id: `issue:${String(item.number)}`,
     type: 'issue',
@@ -33,7 +51,8 @@ export function mapIssueWorkItem(item: Record<string, unknown>): MainWorkItem {
     ...createdAtFromUnknown(item),
     ...authorFieldsFromUnknown(item),
     ...(typeof item.comments === 'number' ? { commentCount: item.comments } : {}),
-    ...(item.assignees !== undefined ? { assignees: usersFromUnknown(item.assignees) } : {})
+    ...(item.assignees !== undefined ? { assignees: usersFromUnknown(item.assignees) } : {}),
+    ...listedApiRepository(sourceRepository)
   }
 }
 

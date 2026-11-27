@@ -8,8 +8,20 @@ export type GitHubWorkItemTarget = {
   number: number
 }
 
+type WorkItemIdentity = Pick<GitHubWorkItem, 'url' | 'prRepo' | 'apiRepository' | 'type' | 'number'>
+
+function sameGitHubSlug(
+  left: { owner: string; repo: string },
+  right: { owner: string; repo: string }
+): boolean {
+  return (
+    left.owner.toLowerCase() === right.owner.toLowerCase() &&
+    left.repo.toLowerCase() === right.repo.toLowerCase()
+  )
+}
+
 export function matchesGitHubWorkItemTarget(
-  item: Pick<GitHubWorkItem, 'url' | 'prRepo' | 'type' | 'number'> | null | undefined,
+  item: WorkItemIdentity | null | undefined,
   target: GitHubWorkItemTarget
 ): boolean {
   if (!item || item.type !== target.type || item.number !== target.number) {
@@ -26,12 +38,19 @@ export function matchesGitHubWorkItemTarget(
     ) {
       return false
     }
-    const repository = { host: url.host, owner: parts[0], repo: parts[1] }
-    const key = githubRepoIdentityKey(repository)
-    return (
-      key === githubRepoIdentityKey(target.repository) &&
-      (!item.prRepo || githubRepoIdentityKey(item.prRepo) === key)
-    )
+    const fromUrl = { host: url.host, owner: parts[0], repo: parts[1] }
+    if (!sameGitHubSlug(fromUrl, target.repository)) {
+      return false
+    }
+    // html_url can name a GHES web host while the listed row keeps the API host.
+    const listed = item.prRepo ?? item.apiRepository
+    if (listed) {
+      return (
+        sameGitHubSlug(listed, target.repository) &&
+        githubRepoIdentityKey(listed) === githubRepoIdentityKey(target.repository)
+      )
+    }
+    return githubRepoIdentityKey(fromUrl) === githubRepoIdentityKey(target.repository)
   } catch {
     return false
   }
@@ -75,9 +94,7 @@ export function parseGitHubItemRepository(url: string): GitHubOwnerRepo | null {
   }
 }
 
-export function resolveGitHubWorkItemTarget(
-  item: Pick<GitHubWorkItem, 'url' | 'prRepo' | 'type' | 'number'>
-): GitHubWorkItemTarget | null {
-  const repository = item.prRepo ?? parseGitHubItemRepository(item.url)
+export function resolveGitHubWorkItemTarget(item: WorkItemIdentity): GitHubWorkItemTarget | null {
+  const repository = item.prRepo ?? item.apiRepository ?? parseGitHubItemRepository(item.url)
   return repository ? { repository, type: item.type, number: item.number } : null
 }

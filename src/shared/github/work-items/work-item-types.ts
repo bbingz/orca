@@ -35,6 +35,8 @@ export type GitHubWorkItem = {
   // Head SHA enables cached check-run requests instead of per-row gh pr checks.
   headSha?: string
   prRepo?: GitHubRepositoryIdentity
+  /** API repository that listed an issue. html_url may use a different GHES web host. */
+  apiRepository?: GitHubRepositoryIdentity
   additions?: number
   deletions?: number
   changedFiles?: number

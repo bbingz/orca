@@ -49,7 +49,7 @@ export function useGitHubItemTargetIdentity({
       workItem
         ? workItem.type === 'pr'
           ? resolvePullRequestRepo(workItem, projectOrigin)
-          : (projectOrigin ?? parseOwnerRepoFromItemUrl(workItem.url))
+          : (projectOrigin ?? workItem.apiRepository ?? parseOwnerRepoFromItemUrl(workItem.url))
         : null,
     [projectOrigin, workItem]
   )

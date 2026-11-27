@@ -135,12 +135,15 @@ async function readNumberPreview(
       assignees: item.assignees.nodes.map(restIssueActor)
     }
     if (item.__typename === 'Issue') {
-      return mapIssueWorkItem({
-        ...item,
-        ...associations,
-        state: item.issueState.toLowerCase(),
-        comments: item.comments.totalCount
-      })
+      return mapIssueWorkItem(
+        {
+          ...item,
+          ...associations,
+          state: item.issueState.toLowerCase(),
+          comments: item.comments.totalCount
+        },
+        repository
+      )
     }
     return mapPullRequestWorkItem(
       {
@@ -194,7 +197,7 @@ export async function fetchWorkItemPreview(
     const { stdout } = await ghExecFileAsync(['api', `${base}/issues/${number}`], ghOptions)
     const item: Record<string, unknown> = JSON.parse(stdout)
     if (!('pull_request' in item)) {
-      return mapIssueWorkItem(item)
+      return mapIssueWorkItem(item, ownerRepo)
     }
   }
   const { stdout } = await ghExecFileAsync(['api', `${base}/pulls/${number}`], ghOptions)
