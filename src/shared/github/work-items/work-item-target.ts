@@ -43,13 +43,18 @@ export function matchesGitHubWorkItemTarget(
       return false
     }
     // html_url can name a GHES web host while the listed row keeps the API host.
-    // A missing host means github.com, so it cannot excuse a different URL host.
+    // A listed identity still has to be the target, including a github.com prRepo
+    // whose owner differs from the browser URL.
     const listed = item.prRepo ?? item.apiRepository
+    if (
+      listed &&
+      (!sameGitHubSlug(listed, target.repository) ||
+        githubRepoIdentityKey(listed) !== githubRepoIdentityKey(target.repository))
+    ) {
+      return false
+    }
     if (listed && !isDefaultGitHubHost(listed.host)) {
-      return (
-        sameGitHubSlug(listed, target.repository) &&
-        githubRepoIdentityKey(listed) === githubRepoIdentityKey(target.repository)
-      )
+      return true
     }
     return githubRepoIdentityKey(fromUrl) === githubRepoIdentityKey(target.repository)
   } catch {

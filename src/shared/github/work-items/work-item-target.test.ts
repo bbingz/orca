@@ -43,4 +43,20 @@ describe('GitHub Enterprise web and API hosts', () => {
       })
     ).toBe(false)
   })
+
+  it('does not match a github.com pull request whose prRepo owner differs from the URL', () => {
+    const item = {
+      url: 'https://github.com/upstream/widgets/pull/93',
+      type: 'pr' as const,
+      number: 93,
+      prRepo: { host: 'github.com', owner: 'fork', repo: 'widgets' }
+    }
+    expect(
+      matchesGitHubWorkItemTarget(item, {
+        repository: { owner: 'upstream', repo: 'widgets' },
+        type: 'pr',
+        number: 93
+      })
+    ).toBe(false)
+  })
 })
